@@ -1,0 +1,49 @@
+import SwiftUI
+
+/// Top-level container. Gates the experience behind the inbox-scan onboarding,
+/// then routes into the four main tabs (Map / Diary / Stats / Inboxes).
+struct RootView: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        ZStack {
+            Theme.nightGradient.ignoresSafeArea()
+
+            if store.hasCompletedOnboarding {
+                MainTabsView()
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else {
+                OnboardingView()
+                    .transition(.opacity)
+            }
+        }
+        .animation(.smooth(duration: 0.5), value: store.hasCompletedOnboarding)
+    }
+}
+
+struct MainTabsView: View {
+    @State private var selection: Tab = .map
+
+    enum Tab: Hashable { case map, diary, stats, inboxes }
+
+    var body: some View {
+        TabView(selection: $selection) {
+            MapView()
+                .tabItem { Label("Map", systemImage: "map.fill") }
+                .tag(Tab.map)
+
+            DiaryView()
+                .tabItem { Label("Diary", systemImage: "book.closed.fill") }
+                .tag(Tab.diary)
+
+            StatsView()
+                .tabItem { Label("Stats", systemImage: "chart.bar.xaxis.ascending") }
+                .tag(Tab.stats)
+
+            InboxesView()
+                .tabItem { Label("Inboxes", systemImage: "tray.full.fill") }
+                .tag(Tab.inboxes)
+        }
+        .tint(Theme.clay)
+    }
+}
