@@ -8,10 +8,27 @@ struct GameDetailView: View {
 
     var body: some View {
         ZStack {
-            Theme.nightGradient.ignoresSafeArea()
+            Color.red.ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 16) {
+                    // VERIFICATION BANNER
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(.yellow)
+                        Text("🔥 NEW DETAIL VIEW 🔥")
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundStyle(.yellow)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.black))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.yellow, lineWidth: 3))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+
                     Scoreboard(game: game)
                         .padding(.horizontal, 16)
                         .padding(.top, 6)
@@ -45,9 +62,9 @@ struct GameDetailView: View {
                 .padding(.top, 8)
             }
         }
-        .navigationTitle("")
+        .navigationTitle("GAME DETAIL — NEW")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.nightDeep, for: .navigationBar)
+        .toolbarBackground(Color.red, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if let shareImage {
@@ -381,9 +398,23 @@ private struct BallparkPanel: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
 
-            // Aerial photo from MapKit satellite
-            BallparkSnapshot(ballpark: game.ballpark, span: 0.008)
+            // Bright colored block instead of MapKit
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.blue, Color.purple],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                )
                 .frame(height: 180)
+                .overlay {
+                    Text(game.ballpark.name)
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(Color.black.opacity(0.5))
+                        .clipShape(.rect(cornerRadius: 8))
+                }
                 .clipShape(.rect(cornerRadius: 12))
                 .padding(.horizontal, 16)
                 .padding(.top, 12)

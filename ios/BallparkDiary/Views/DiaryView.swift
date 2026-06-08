@@ -7,11 +7,10 @@ struct DiaryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.nightGradient.ignoresSafeArea()
+                Color.red.ignoresSafeArea()
 
                 ScrollView {
                     LazyVStack(spacing: 18, pinnedViews: []) {
-                        // TEMP: visual verification that the NEW code is running
                         BuildVerificationBanner()
                             .padding(.horizontal, 16)
 
@@ -61,9 +60,10 @@ struct DiaryView: View {
                     }
                 }
             }
-            .navigationTitle("Diary")
+            .navigationTitle("DIARY — NEW BUILD")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Color.red, for: .navigationBar)
             .refreshable { await store.refresh() }
             .navigationDestination(for: AttendedGame.self) { game in
                 GameDetailView(game: game)
@@ -88,24 +88,23 @@ struct DiaryView: View {
 private struct BuildVerificationBanner: View {
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
-            Text("NEW DESIGN ACTIVE — BUILD VERIFIED")
-                .font(.caps(10, weight: .heavy))
-                .tracking(1.5)
-                .foregroundStyle(.white)
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(.yellow)
+            Text("🔥 NEW CODE IS RUNNING — BUILD VERIFIED 🔥")
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(.yellow)
             Spacer()
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Theme.grass.opacity(0.85))
+                .fill(Color.black)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
+                .strokeBorder(Color.yellow, lineWidth: 3)
         )
     }
 }
@@ -210,7 +209,7 @@ struct GameCard: View {
         .clipShape(.rect(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.06))
+                .strokeBorder(Color.yellow, lineWidth: 3)
         )
         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
     }
@@ -219,17 +218,26 @@ struct GameCard: View {
 
     private var heroSection: some View {
         ZStack(alignment: .bottomLeading) {
-            BallparkSnapshot(ballpark: game.ballpark)
+            // Bright colored block to verify new code is running
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.orange, Color.pink],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                )
                 .frame(height: 140)
-                .clipped()
 
-            // Gradient fade at bottom for text legibility
-            LinearGradient(
-                colors: [.clear, Theme.card.opacity(0.95)],
-                startPoint: .top, endPoint: .bottom
-            )
-            .frame(height: 60)
-            .frame(maxHeight: .infinity, alignment: .bottom)
+            // Ballpark name overlay
+            Text(game.ballpark.name)
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.6))
+                .clipShape(.rect(cornerRadius: 6))
+                .padding(10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
 
             // Weather badge top-right
             if game.firstPitchTempF > 0 || game.weather != .clear {
