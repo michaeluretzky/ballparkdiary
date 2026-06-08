@@ -332,6 +332,73 @@ final class DiaryStore {
         return nil
     }
 
+    // MARK: - Shared ticket import (Share Extension)
+
+    @discardableResult
+    private func ensureSharedInbox() -> ConnectedInbox {
+        if let existing = connectedInboxes.first(where: { $0.provider == .shared }) {
+            return existing
+        }
+        let inbox = ConnectedInbox(
+            id: UUID(),
+            email: "Shared tickets",
+            provider: .shared,
+            ticketsFound: 0,
+            connectedAt: .now
+        )
+        connectedInboxes.append(inbox)
+        return inbox
+    }
+
+    /// Drain tickets the user shared into the app via the Share Extension.
+    /// Each shared item is parsed for an MLB matchup and confirmed against the
+    /// real schedule before being added — all on-device, no email access.
+    /// Returns the number of newly imported games.
+    @discardableResult
+    func importSharedTickets() async -> Int {
+        let pending = SharedTicketStore.load()
+        guard !pending.isEmpty else { return 0 }
+
+        let messages = pending.map { payload in
+            EmailMessage(
+                id: payload.id,
+                subject: payload.sourceHint,
+                from: payload.sourceHint,
+                snippet: payload.text,
+                internalDate: payload.receivedAt
+            )
+        }
+        let detected = TicketEmailParser.detect(in: messages)
+
+        let inbox = ensureSharedInbox()
+        var existing = gamesByInbox[inbox.id] ?? []
+        let existingKeys = Set(games.map(dayParkKey))
+        var batchKeys = Set<String>()
+        var added = 0
+
+        for candidate in detected {
+            guard let game = await buildGame(from: candidate) else { continue }
+            let key = dayParkKey(game)
+            guard !existingKeys.contains(key), !batchKeys.contains(key) else { continue }
+            batchKeys.insert(key)
+            existing.append(game)
+            added += 1
+        }
+
+        // Always clear the queue so the same shares aren't reprocessed, even if
+        // a matchup couldn't be confirmed.
+        SharedTicketStore.remove(ids: Set(pending.map(\.id)))
+
+        guard added > 0 else { return 0 }
+        gamesByInbox[inbox.id] = existing.sorted { $0.date > $1.date }
+        if let idx = connectedInboxes.firstIndex(where: { $0.id == inbox.id }) {
+            connectedInboxes[idx].ticketsFound = existing.count
+        }
+        if !hasCompletedOnboarding { hasCompletedOnboarding = true }
+        save()
+        return added
+    }
+
     private func dayParkKey(_ game: AttendedGame) -> String {
         let cal = Calendar(identifier: .gregorian)
         let c = cal.dateComponents([.year, .month, .day], from: game.date)

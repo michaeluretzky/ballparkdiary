@@ -27,6 +27,8 @@ struct InboxesView: View {
 
                         ForwardingCard()
 
+                        ShareImportCard()
+
                         if !storeKit.isPremium {
                             ProUpgradeBanner { showPaywall = true }
                         }
@@ -256,6 +258,71 @@ private struct ForwardingCard: View {
         }
         .padding(16)
         .nightCard()
+    }
+}
+
+// MARK: - Share import card
+
+/// Explains the clean, on-device share-sheet import: share a ticket screenshot,
+/// PDF or forwarded email into Ballpark Diary from any app and the game is added
+/// automatically — no accounts, no email access.
+private struct ShareImportCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.and.arrow.down.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(InboxProvider.shared.brandColor)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(InboxProvider.shared.brandColor.opacity(0.18)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Share a ticket")
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Add a game straight from any app")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                ShareStep(number: "1", text: "Open a ticket screenshot, PDF or confirmation email.")
+                ShareStep(number: "2", text: "Tap Share, then choose Ballpark Diary.")
+                ShareStep(number: "3", text: "We read it on your device and confirm the box score.")
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Theme.cardElevated)
+            )
+
+            Text("Nothing leaves your phone — no email login, no accounts.")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textMuted)
+        }
+        .padding(16)
+        .nightCard()
+    }
+}
+
+private struct ShareStep: View {
+    let number: String
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(number)
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(Theme.clay)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Theme.clay.opacity(0.16)))
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
     }
 }
 

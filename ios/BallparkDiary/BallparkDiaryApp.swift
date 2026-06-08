@@ -6,6 +6,7 @@ import RevenueCat
 struct BallparkDiaryApp: App {
     @State private var store = DiaryStore()
     @State private var storeKit = StoreViewModel()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         #if DEBUG
@@ -28,6 +29,12 @@ struct BallparkDiaryApp: App {
                 }
                 .task {
                     await GmailService.shared.restorePreviousSignIn()
+                    await store.importSharedTickets()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        Task { await store.importSharedTickets() }
+                    }
                 }
         }
     }
