@@ -1,113 +1,141 @@
 import SwiftUI
+import MapKit
 
-/// A stylized "view from your seat" — a perspective look at the field drawn from
-/// the section the user actually sat in. The viewing angle shifts based on the
-/// section number so each seat feels distinct.
+/// In-memory cache so each seat-perspective snapshot is only
+/// rendered once per session.
+@MainActor
+final class SeatSnapshotCache {
+    static let shared = SeatSnapshotCache()
+    private var cache: [String: UIImage] = [:]
+    func image(for key: String) -> UIImage? { cache[key] }
+    func store(_ image: UIImage, for key: String) { cache[key] = image }
+}
+
+/// A real 3D satellite-flyover view of the ballpark field, rendered from the
+/// approximate angle of the user's section using Apple Maps' 3D stadium models.
+///
+/// Section numbers are mapped to compass headings so the camera "sits" in the
+/// right part of the bowl and looks toward the infield — behind home plate
+/// (low numbers) faces center field, higher sections sweep clockwise around
+/// the stadium.  Combined with an angled pitch this produces a genuinely
+/// different perspective for each seat.
 struct SeatPerspectiveView: View {
     let game: AttendedGame
 
-    /// A normalized horizontal viewing offset (-1 = far down the 3rd-base line,
-    /// +1 = far down the 1st-base line), derived from the section number.
-    private var viewAngle: CGFloat {
+    // MARK: - Camera parameters
+
+    /// Map the section number to a compass heading.  MLB parks are typically
+    /// oriented with home plate south‑west and center field north‑east, so
+    /// behind‑home‑plate sections (low numbers) look toward ~45° (NE).  Each
+    /// 2 section units sweep 1° clockwise — section 360 lands at ~225° (CF
+    /// looking back toward home).
+    private var heading: CLLocationDirection {
         let digits = game.section.filter(\.isNumber)
-        guard let n = Int(digits) else { return 0 }
-        // Map section number into a repeating -0.7...0.7 spread around home plate.
-        let wrapped = Double(n % 160) / 160.0   // 0...1 around the bowl
-        return CGFloat((wrapped - 0.5) * 1.4)
+        guard let n = Double(digits), n > 0 else { return 45 }
+        let offset = n * 0.5
+        var h = (45.0 - offset).truncatingRemainder(dividingBy: 360)
+        if h < 0 { h += 360 }
+        return h
     }
 
+    /// Camera altitude in metres — scale with ballpark capacity so tiny parks
+    /// aren't lost and big stadiums aren't cropped.
+    private var distance: CLLocationDistance {
+        switch game.ballpark.capacity {
+        case ..<25_000: return 280
+        case ..<40_000: return 340
+        case ..<48_000: return 400
+        default:        return 450
+        }
+    }
+
+    /// Pitch from nadir.  62° gives a believable "sitting in the stands"
+    /// angle without the 3D buildings flattening too much.
+    private let pitch: CGFloat = 62
+
+    // MARK: - State
+
+    @State private var image: UIImage?
+
+    private var cacheKey: String {
+        "seat-\(game.ballpark.id)-\(game.section)-\(Int(heading))-\(Int(distance))"
+    }
+
+    // MARK: - Body
+
     var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            ZStack {
-                // Night sky behind the stadium
-                LinearGradient(
-                    colors: [Theme.nightDeep, Theme.night],
-                    startPoint: .top, endPoint: .bottom
-                )
+        ZStack {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                placeholder
+            }
 
-                // Outfield grass beyond the infield
-                FieldGrass(angle: viewAngle)
-                    .fill(Theme.grass.opacity(0.55))
-                FieldGrass(angle: viewAngle)
-                    .stroke(.white.opacity(0.10), lineWidth: 1)
-
-                // Infield dirt diamond, drawn in perspective from the stands
-                InfieldDiamond(angle: viewAngle)
-                    .fill(Theme.clay.opacity(0.85))
-                InfieldDiamond(angle: viewAngle)
-                    .stroke(Theme.chalk.opacity(0.6), lineWidth: 1.5)
-
-                // Foul lines fanning out from home plate at the bottom
-                FoulLines(angle: viewAngle)
-                    .stroke(Theme.chalk.opacity(0.7), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-
-                // Stadium light glow up top
-                Ellipse()
-                    .fill(Theme.lights.opacity(0.12))
-                    .frame(width: w * 0.9, height: h * 0.35)
-                    .blur(radius: 28)
-                    .offset(y: -h * 0.32)
-
-                // Foreground rail to anchor the "from the seats" feeling
+            // Subtle section badge in bottom-right corner
+            if game.hasSeatInfo {
                 VStack {
                     Spacer()
-                    Rectangle()
-                        .fill(.black.opacity(0.55))
-                        .frame(height: 10)
-                        .overlay(Rectangle().fill(.white.opacity(0.08)).frame(height: 2), alignment: .top)
+                    HStack {
+                        Spacer()
+                        Text("Section \(game.section)")
+                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(.black.opacity(0.5), in: .capsule)
+                            .padding(6)
+                    }
                 }
             }
         }
+        .task(id: cacheKey) { await load() }
     }
-}
 
-private struct FieldGrass: Shape {
-    let angle: CGFloat
-    func path(in rect: CGRect) -> Path {
-        let cx = rect.midX + angle * rect.width * 0.22
-        var p = Path()
-        p.move(to: CGPoint(x: rect.minX - 20, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX - 20, y: rect.height * 0.55))
-        p.addQuadCurve(
-            to: CGPoint(x: rect.maxX + 20, y: rect.height * 0.55),
-            control: CGPoint(x: cx, y: rect.height * 0.30)
+    private var placeholder: some View {
+        ZStack {
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Theme.grass.opacity(0.30), Theme.nightDeep],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+            ProgressView()
+                .tint(Theme.lights.opacity(0.7))
+        }
+    }
+
+    // MARK: - Snapshot
+
+    private func load() async {
+        if let cached = SeatSnapshotCache.shared.image(for: cacheKey) {
+            image = cached
+            return
+        }
+
+        let options = MKMapSnapshotter.Options()
+        options.region = MKCoordinateRegion(
+            center: game.ballpark.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.0030, longitudeDelta: 0.0030)
         )
-        p.addLine(to: CGPoint(x: rect.maxX + 20, y: rect.maxY))
-        p.closeSubpath()
-        return p
-    }
-}
+        options.size = CGSize(width: 640, height: 420)
+        options.mapType = .satelliteFlyover
+        options.showsBuildings = true
+        options.camera = MKMapCamera(
+            lookingAtCenter: game.ballpark.coordinate,
+            fromDistance: distance,
+            pitch: pitch,
+            heading: heading
+        )
 
-private struct InfieldDiamond: Shape {
-    let angle: CGFloat
-    func path(in rect: CGRect) -> Path {
-        let cx = rect.midX + angle * rect.width * 0.28
-        let home = CGPoint(x: rect.midX, y: rect.height * 0.92)
-        let second = CGPoint(x: cx, y: rect.height * 0.52)
-        let first = CGPoint(x: cx + rect.width * 0.26, y: rect.height * 0.70)
-        let third = CGPoint(x: cx - rect.width * 0.26, y: rect.height * 0.70)
-        var p = Path()
-        p.move(to: home)
-        p.addLine(to: first)
-        p.addLine(to: second)
-        p.addLine(to: third)
-        p.closeSubpath()
-        return p
-    }
-}
-
-private struct FoulLines: Shape {
-    let angle: CGFloat
-    func path(in rect: CGRect) -> Path {
-        let cx = rect.midX + angle * rect.width * 0.28
-        let home = CGPoint(x: rect.midX, y: rect.height * 0.92)
-        var p = Path()
-        p.move(to: home)
-        p.addLine(to: CGPoint(x: cx + rect.width * 0.55, y: rect.height * 0.50))
-        p.move(to: home)
-        p.addLine(to: CGPoint(x: cx - rect.width * 0.55, y: rect.height * 0.50))
-        return p
+        do {
+            let snapshot = try await MKMapSnapshotter(options: options).start()
+            SeatSnapshotCache.shared.store(snapshot.image, for: cacheKey)
+            image = snapshot.image
+        } catch {
+            // Keep the placeholder — not worth surfacing an error for imagery.
+        }
     }
 }
