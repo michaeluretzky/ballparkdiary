@@ -1,69 +1,64 @@
 import SwiftUI
 
-/// Chronological list of attended games rendered as vintage baseball cards.
+/// Chronological list of attended games with ballpark aerial hero photos,
+/// compact scores, and confirmation numbers.
 struct DiaryView: View {
     @Environment(DiaryStore.self) private var store
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.red.ignoresSafeArea()
+            ScrollView {
+                LazyVStack(spacing: 18) {
+                    DiaryHeader()
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
 
-                ScrollView {
-                    LazyVStack(spacing: 18, pinnedViews: []) {
-                        BuildVerificationBanner()
-                            .padding(.horizontal, 16)
+                    if !store.upcomingGames.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("UPCOMING")
+                                .font(.caps(11, weight: .heavy))
+                                .tracking(3)
+                                .foregroundStyle(Theme.lights)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 6)
 
-                        DiaryHeader()
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-
-                        if !store.upcomingGames.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("UPCOMING")
-                                    .font(.caps(11, weight: .heavy))
-                                    .tracking(3)
-                                    .foregroundStyle(Theme.lights)
-                                    .padding(.horizontal, 20)
-                                    .padding(.top, 6)
-
-                                ForEach(store.upcomingGames) { game in
-                                    NavigationLink(value: game) {
-                                        GameCard(game: game)
-                                            .padding(.horizontal, 16)
-                                    }
-                                    .buttonStyle(.plain)
+                            ForEach(store.upcomingGames) { game in
+                                NavigationLink(value: game) {
+                                    GameCard(game: game)
+                                        .padding(.horizontal, 16)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-
-                        ForEach(Array(groupedGames.enumerated()), id: \.element.0) { _, group in
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text(group.0.uppercased())
-                                    .font(.caps(11, weight: .heavy))
-                                    .tracking(3)
-                                    .foregroundStyle(Theme.clay)
-                                    .padding(.horizontal, 20)
-                                    .padding(.top, 6)
-
-                                ForEach(group.1) { game in
-                                    NavigationLink(value: game) {
-                                        GameCard(game: game)
-                                            .padding(.horizontal, 16)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-
-                        Color.clear.frame(height: 40)
                     }
+
+                    ForEach(Array(groupedGames.enumerated()), id: \.element.0) { _, group in
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(group.0.uppercased())
+                                .font(.caps(11, weight: .heavy))
+                                .tracking(3)
+                                .foregroundStyle(Theme.clay)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 6)
+
+                            ForEach(group.1) { game in
+                                NavigationLink(value: game) {
+                                    GameCard(game: game)
+                                        .padding(.horizontal, 16)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    Color.clear.frame(height: 40)
                 }
             }
-            .navigationTitle("DIARY — NEW BUILD")
+            .background(Theme.nightGradient.ignoresSafeArea())
+            .navigationTitle("Diary")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(Color.red, for: .navigationBar)
+            .toolbarBackground(Theme.nightDeep, for: .navigationBar)
             .refreshable { await store.refresh() }
             .navigationDestination(for: AttendedGame.self) { game in
                 GameDetailView(game: game)
@@ -71,8 +66,6 @@ struct DiaryView: View {
         }
     }
 
-    /// Groups completed games by season-year, latest first. Upcoming games are
-    /// shown separately at the top of the list.
     private var groupedGames: [(String, [AttendedGame])] {
         let groups = Dictionary(grouping: store.completedGames) { g -> Int in
             Calendar.current.component(.year, from: g.date)
@@ -80,32 +73,6 @@ struct DiaryView: View {
         return groups
             .sorted { $0.key > $1.key }
             .map { ("\($0.key) Season", $0.value.sorted { $0.date > $1.date }) }
-    }
-}
-
-// MARK: - Build verification banner (TEMPORARY)
-
-private struct BuildVerificationBanner: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 18, weight: .black))
-                .foregroundStyle(.yellow)
-            Text("🔥 NEW CODE IS RUNNING — BUILD VERIFIED 🔥")
-                .font(.system(size: 12, weight: .black))
-                .foregroundStyle(.yellow)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.black)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.yellow, lineWidth: 3)
-        )
     }
 }
 
@@ -145,19 +112,16 @@ private struct HeaderStat: View {
     }
 }
 
-// MARK: - Game card (B+C redesign — ballpark aerial hero, smaller scores)
+// MARK: - Game card
 
 struct GameCard: View {
     let game: AttendedGame
 
     var body: some View {
         VStack(spacing: 0) {
-            // Ballpark aerial hero
             heroSection
 
-            // Card body
             VStack(spacing: 0) {
-                // Date + score bar
                 HStack(alignment: .center, spacing: 0) {
                     dateBadge
                     Spacer()
@@ -166,7 +130,6 @@ struct GameCard: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 12)
 
-                // Team matchup
                 HStack(spacing: 6) {
                     TeamChip(team: game.awayTeam, primary: false)
                     Text("@")
@@ -178,7 +141,6 @@ struct GameCard: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
 
-                // Venue + confirmation row
                 HStack(spacing: 8) {
                     Image(systemName: "mappin.circle.fill")
                         .font(.system(size: 10))
@@ -207,39 +169,32 @@ struct GameCard: View {
             .background(Theme.card)
         }
         .clipShape(.rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.yellow, lineWidth: 3)
-        )
         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
     }
 
-    // MARK: - Hero section
+    // MARK: Hero
 
     private var heroSection: some View {
         ZStack(alignment: .bottomLeading) {
-            // Bright colored block to verify new code is running
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.orange, Color.pink],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                )
-                .frame(height: 140)
+            BallparkSnapshot(ballpark: game.ballpark)
+                .frame(height: 160)
+                .allowsHitTesting(false)
 
-            // Ballpark name overlay
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.55)],
+                startPoint: .center,
+                endPoint: .bottom
+            )
+
             Text(game.ballpark.name)
                 .font(.system(size: 14, weight: .black))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(Color.black.opacity(0.6))
+                .background(.ultraThinMaterial)
                 .clipShape(.rect(cornerRadius: 6))
                 .padding(10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
 
-            // Weather badge top-right
             if game.firstPitchTempF > 0 || game.weather != .clear {
                 HStack(spacing: 4) {
                     Image(systemName: game.weather.symbol)
@@ -258,7 +213,7 @@ struct GameCard: View {
         }
     }
 
-    // MARK: - Date badge
+    // MARK: Date badge
 
     private var dateBadge: some View {
         HStack(spacing: 8) {
@@ -275,7 +230,7 @@ struct GameCard: View {
         }
     }
 
-    // MARK: - Score block (compact)
+    // MARK: Score block
 
     private var scoreBlock: some View {
         Group {

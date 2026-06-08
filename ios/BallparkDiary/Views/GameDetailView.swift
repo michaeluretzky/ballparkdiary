@@ -1,70 +1,52 @@
 import SwiftUI
 import UIKit
 
-/// Detail screen for a single attended game: scoreboard, ticket, ballpark, highlights.
+/// Detail screen for a single game: scoreboard, ticket stub with confirmation,
+/// ballpark aerial, seat perspective, milestones, highlights, and game facts.
 struct GameDetailView: View {
     let game: AttendedGame
     @State private var shareImage: Image? = nil
 
     var body: some View {
-        ZStack {
-            Color.red.ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 16) {
-                    // VERIFICATION BANNER
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 14, weight: .black))
-                            .foregroundStyle(.yellow)
-                        Text("🔥 NEW DETAIL VIEW 🔥")
-                            .font(.system(size: 11, weight: .black))
-                            .foregroundStyle(.yellow)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.black))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.yellow, lineWidth: 3))
+        ScrollView {
+            VStack(spacing: 16) {
+                Scoreboard(game: game)
                     .padding(.horizontal, 16)
                     .padding(.top, 6)
 
-                    Scoreboard(game: game)
+                TicketStub(game: game)
+                    .padding(.horizontal, 16)
+
+                BallparkPanel(game: game)
+                    .padding(.horizontal, 16)
+
+                if !game.milestones.isEmpty {
+                    MilestonesPanel(game: game)
                         .padding(.horizontal, 16)
-                        .padding(.top, 6)
-
-                    TicketStub(game: game)
-                        .padding(.horizontal, 16)
-
-                    BallparkPanel(game: game)
-                        .padding(.horizontal, 16)
-
-                    if !game.milestones.isEmpty {
-                        MilestonesPanel(game: game)
-                            .padding(.horizontal, 16)
-                    }
-
-                    if !game.highlights.isEmpty {
-                        HighlightsPanel(game: game)
-                            .padding(.horizontal, 16)
-                    }
-
-                    if !game.isUpcoming {
-                        FactsPanel(game: game)
-                            .padding(.horizontal, 16)
-                    }
-
-                    SourceEmailRow(game: game)
-                        .padding(.horizontal, 16)
-
-                    Color.clear.frame(height: 30)
                 }
-                .padding(.top, 8)
+
+                if !game.highlights.isEmpty {
+                    HighlightsPanel(game: game)
+                        .padding(.horizontal, 16)
+                }
+
+                if !game.isUpcoming {
+                    FactsPanel(game: game)
+                        .padding(.horizontal, 16)
+                }
+
+                SourceEmailRow(game: game)
+                    .padding(.horizontal, 16)
+
+                Color.clear.frame(height: 30)
             }
+            .padding(.top, 8)
         }
-        .navigationTitle("GAME DETAIL — NEW")
+        .background(Theme.nightGradient.ignoresSafeArea())
+        .navigationTitle(game.ballpark.name)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color.red, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarBackground(Theme.nightDeep, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if let shareImage {
@@ -92,7 +74,6 @@ struct GameDetailView: View {
 
 // MARK: - Shareable card
 
-/// A polished, image-exportable summary of a single game for sharing.
 private struct ShareableGameCard: View {
     let game: AttendedGame
 
@@ -178,7 +159,6 @@ private struct Scoreboard: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            // Date / venue strip
             HStack(spacing: 6) {
                 Text(game.date.formatted(date: .complete, time: .omitted).uppercased())
                     .font(.caps(10, weight: .heavy))
@@ -324,7 +304,6 @@ private struct TicketStub: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Tear edge
             TearLine()
                 .stroke(Theme.parchmentInk.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                 .frame(width: 1)
@@ -379,7 +358,7 @@ private struct StubField: View {
     }
 }
 
-// MARK: - Ballpark panel with aerial + seat view
+// MARK: - Ballpark panel
 
 private struct BallparkPanel: View {
     let game: AttendedGame
@@ -398,28 +377,12 @@ private struct BallparkPanel: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
 
-            // Bright colored block instead of MapKit
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.blue, Color.purple],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                )
-                .frame(height: 180)
-                .overlay {
-                    Text(game.ballpark.name)
-                        .font(.system(size: 16, weight: .black))
-                        .foregroundStyle(.white)
-                        .padding(8)
-                        .background(Color.black.opacity(0.5))
-                        .clipShape(.rect(cornerRadius: 8))
-                }
+            BallparkSnapshot(ballpark: game.ballpark)
+                .frame(height: 200)
                 .clipShape(.rect(cornerRadius: 12))
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
-            // Seat perspective — only when ticket has real seat info
             if game.hasSeatInfo {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
@@ -662,7 +625,6 @@ private struct SourceEmailRow: View {
     }
 }
 
-// Source extension to surface the ticketing platform on the email row.
 extension AttendedGame {
     var ticketSource: String { source }
 }
