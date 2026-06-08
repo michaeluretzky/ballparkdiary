@@ -191,7 +191,8 @@ struct ManualGameEntryView: View {
             highlights: highlights,
             milestones: [],
             emailSubject: "Manual entry · \(ballpark.name)",
-            source: "Manual entry"
+            source: "Manual entry",
+            status: .completed
         )
         store.addManualGame(game)
         dismiss()

@@ -28,13 +28,17 @@ struct GameDetailView: View {
                             .padding(.horizontal, 16)
                     }
 
-                    HighlightsPanel(game: game)
-                        .padding(.horizontal, 16)
+                    if !game.highlights.isEmpty {
+                        HighlightsPanel(game: game)
+                            .padding(.horizontal, 16)
+                    }
 
-                    FactsPanel(game: game)
-                        .padding(.horizontal, 16)
+                    if !game.isUpcoming {
+                        FactsPanel(game: game)
+                            .padding(.horizontal, 16)
+                    }
 
-                    SourceEmailRow(subject: game.emailSubject)
+                    SourceEmailRow(game: game)
                         .padding(.horizontal, 16)
 
                     Color.clear.frame(height: 30)
@@ -89,11 +93,11 @@ private struct ShareableGameCard: View {
                 .foregroundStyle(Theme.lights)
 
             HStack(spacing: 18) {
-                cardTeam(game.awayTeam, score: game.awayScore, winner: game.awayScore > game.homeScore)
+                cardTeam(game.awayTeam, score: game.awayScore, winner: !game.isUpcoming && game.awayScore > game.homeScore)
                 Text("@")
                     .font(.scoreboard(20, weight: .medium))
                     .foregroundStyle(Theme.textMuted)
-                cardTeam(game.homeTeam, score: game.homeScore, winner: game.homeScore > game.awayScore)
+                cardTeam(game.homeTeam, score: game.homeScore, winner: !game.isUpcoming && game.homeScore > game.awayScore)
             }
             .padding(.vertical, 8)
 
@@ -105,14 +109,25 @@ private struct ShareableGameCard: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textSecondary)
 
-            HStack(spacing: 6) {
-                Image(systemName: game.userWon ? "hand.thumbsup.fill" : "hand.thumbsdown.fill")
-                Text(game.userWon ? "I saw a win" : "I was there for the loss")
+            if game.isUpcoming {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar")
+                    Text("Going to this one")
+                }
+                .font(.caps(12, weight: .heavy))
+                .tracking(1.5)
+                .foregroundStyle(Theme.lights)
+                .padding(.top, 4)
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: game.userWon ? "hand.thumbsup.fill" : "hand.thumbsdown.fill")
+                    Text(game.userWon ? "I saw a win" : "I was there for the loss")
+                }
+                .font(.caps(12, weight: .heavy))
+                .tracking(1.5)
+                .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
+                .padding(.top, 4)
             }
-            .font(.caps(12, weight: .heavy))
-            .tracking(1.5)
-            .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
-            .padding(.top, 4)
 
             Spacer(minLength: 0)
 
@@ -133,7 +148,7 @@ private struct ShareableGameCard: View {
                     .foregroundStyle(.white)
             }
             .frame(width: 60, height: 60)
-            Text("\(score)")
+            Text(game.isUpcoming ? "–" : "\(score)")
                 .font(.scoreboard(46, weight: .black))
                 .foregroundStyle(winner ? Theme.textPrimary : Theme.textMuted)
         }
@@ -163,29 +178,56 @@ private struct Scoreboard: View {
             }
 
             HStack(spacing: 12) {
-                TeamColumn(team: game.awayTeam, score: game.awayScore, isWinner: game.awayScore > game.homeScore)
+                TeamColumn(team: game.awayTeam, score: game.awayScore, isWinner: !game.isUpcoming && game.awayScore > game.homeScore, hideScore: game.isUpcoming)
                 Text("vs")
                     .font(.scoreboard(14, weight: .medium))
                     .foregroundStyle(Theme.textMuted)
-                TeamColumn(team: game.homeTeam, score: game.homeScore, isWinner: game.homeScore > game.awayScore)
+                TeamColumn(team: game.homeTeam, score: game.homeScore, isWinner: !game.isUpcoming && game.homeScore > game.awayScore, hideScore: game.isUpcoming)
             }
 
-            HStack(spacing: 8) {
-                Capsule()
-                    .fill(game.userWon ? Theme.grass : Theme.foul)
-                    .frame(width: 6, height: 6)
-                Text(resultText)
-                    .font(.caps(11, weight: .heavy))
-                    .tracking(2)
-                    .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
-                Spacer()
-                Text("\(durationString) · \(game.attendance.formatted(.number)) fans")
-                    .font(.stat(11, weight: .semibold))
-                    .foregroundStyle(Theme.textMuted)
+            if game.isUpcoming {
+                HStack(spacing: 8) {
+                    Capsule()
+                        .fill(Theme.lights)
+                        .frame(width: 6, height: 6)
+                    Text("UPCOMING · FIRST PITCH \(game.date.formatted(.dateTime.hour().minute()))")
+                        .font(.caps(11, weight: .heavy))
+                        .tracking(2)
+                        .foregroundStyle(Theme.lights)
+                    Spacer()
+                    Text("Pull down on your diary to update the score")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.textMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Capsule()
+                        .fill(game.userWon ? Theme.grass : Theme.foul)
+                        .frame(width: 6, height: 6)
+                    Text(resultText)
+                        .font(.caps(11, weight: .heavy))
+                        .tracking(2)
+                        .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
+                    Spacer()
+                    if game.attendance > 0 || game.durationMinutes > 0 {
+                        Text(metaString)
+                            .font(.stat(11, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                }
             }
         }
         .padding(16)
         .nightCard()
+    }
+
+    private var metaString: String {
+        var parts: [String] = []
+        if game.durationMinutes > 0 { parts.append(durationString) }
+        if game.attendance > 0 { parts.append("\(game.attendance.formatted(.number)) fans") }
+        return parts.joined(separator: " · ")
     }
 
     private var resultText: String {
@@ -204,6 +246,7 @@ private struct TeamColumn: View {
     let team: Team
     let score: Int
     let isWinner: Bool
+    var hideScore: Bool = false
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
@@ -215,7 +258,7 @@ private struct TeamColumn: View {
             }
             .frame(width: 56, height: 56)
 
-            Text("\(score)")
+            Text(hideScore ? "–" : "\(score)")
                 .font(.scoreboard(48, weight: .black))
                 .foregroundStyle(isWinner ? Theme.textPrimary : Theme.textMuted)
 
@@ -537,20 +580,25 @@ private struct Fact: View {
 // MARK: - Source email
 
 private struct SourceEmailRow: View {
-    let subject: String
+    let game: AttendedGame
+
+    private var isManual: Bool { game.source == "Manual entry" }
+    private var icon: String { isManual ? "square.and.pencil" : "square.and.arrow.down.fill" }
+    private var caption: String { isManual ? "Added by hand" : "Imported from a shared ticket" }
+
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "envelope.badge.fill")
+            Image(systemName: icon)
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(Theme.clay)
                 .frame(width: 32, height: 32)
                 .background(Circle().fill(Theme.clay.opacity(0.16)))
             VStack(alignment: .leading, spacing: 1) {
-                Text("Detected from your inbox".uppercased())
+                Text(caption.uppercased())
                     .font(.caps(9, weight: .heavy))
                     .tracking(1.5)
                     .foregroundStyle(Theme.textMuted)
-                Text(subject)
+                Text(game.source)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(2)

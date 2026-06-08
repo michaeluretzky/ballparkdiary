@@ -19,17 +19,6 @@ struct RootView: View {
             }
         }
         .animation(.smooth(duration: 0.5), value: store.hasCompletedOnboarding)
-        .alert(
-            "Couldn't connect",
-            isPresented: Binding(
-                get: { store.scanError != nil },
-                set: { if !$0 { store.scanError = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) { store.scanError = nil }
-        } message: {
-            Text(store.scanError ?? "")
-        }
     }
 }
 
@@ -53,7 +42,7 @@ struct MainTabsView: View {
                 .tag(Tab.stats)
 
             InboxesView()
-                .tabItem { Label("Inboxes", systemImage: "tray.full.fill") }
+                .tabItem { Label("Sources", systemImage: "tray.full.fill") }
                 .tag(Tab.inboxes)
         }
         .tint(Theme.clay)

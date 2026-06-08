@@ -19,8 +19,17 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     let durationMinutes: Int
     let highlights: [Highlight]
     let milestones: [PlayerMilestone]
-    let emailSubject: String   // surfaced during scan onboarding
+    let emailSubject: String   // surfaced during import (shared ticket / manual note)
     let source: String         // ticketing platform / receipt source
+    /// Whether the game has been played (real final score) or is still upcoming
+    /// (ticket for a future game — no score yet). Optional for backward-compatible
+    /// decoding of diaries saved before this field existed (treated as completed).
+    let status: Status?
+
+    /// Resolved status, defaulting older saved games to `.completed`.
+    var gameStatus: Status { status ?? .completed }
+    /// A ticket for a game that hasn't been played yet — no real score exists.
+    var isUpcoming: Bool { gameStatus == .upcoming }
 
     var ballpark: Ballpark { Ballpark.by(id: ballparkId) ?? Ballpark.all[0] }
     var homeTeam: Team { Team.by(id: homeTeamId) ?? .yankees }
@@ -31,7 +40,24 @@ struct AttendedGame: Identifiable, Hashable, Codable {
         let homeWon = homeScore > awayScore
         return userRootedForHome ? homeWon : !homeWon
     }
-    var scoreString: String { "\(awayScore) – \(homeScore)" }
+    var scoreString: String { isUpcoming ? "vs" : "\(awayScore) – \(homeScore)" }
+
+    /// Promote an upcoming game to completed once its real final score is known.
+    func completed(homeScore: Int, awayScore: Int) -> AttendedGame {
+        AttendedGame(
+            id: id, date: date, ballparkId: ballparkId,
+            homeTeamId: homeTeamId, awayTeamId: awayTeamId,
+            homeScore: homeScore, awayScore: awayScore,
+            userRootedForHome: userRootedForHome,
+            section: section, row: row, seat: seat,
+            weather: weather, firstPitchTempF: firstPitchTempF,
+            attendance: attendance, durationMinutes: durationMinutes,
+            highlights: highlights, milestones: milestones,
+            emailSubject: emailSubject, source: source, status: .completed
+        )
+    }
+
+    enum Status: String, Codable { case completed, upcoming }
 
     enum Weather: String, CaseIterable, Codable {
         case clear = "Clear"
@@ -73,7 +99,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
 
 /// A career milestone reached by an MLB player during a game the user
 /// attended. Sourced (in a future version) from the MLB Stats API; for now
-/// curated in MockData. Tapping a milestone opens a detail screen.
+/// surfaced from confirmed game data. Tapping a milestone opens a detail screen.
 struct PlayerMilestone: Identifiable, Hashable, Codable {
     let id: UUID
     let playerName: String
@@ -163,14 +189,16 @@ extension AttendedGame {
             }
         }()
 
+        // Only a finished game has a real score; an upcoming ticket has none yet.
+        let isFinal = result.isFinal
         return AttendedGame(
             id: UUID(),
             date: result.date,
             ballparkId: ballpark.id,
             homeTeamId: homeTeam.id,
             awayTeamId: awayTeam.id,
-            homeScore: result.homeScore,
-            awayScore: result.awayScore,
+            homeScore: isFinal ? result.homeScore : 0,
+            awayScore: isFinal ? result.awayScore : 0,
             userRootedForHome: rootedForHome,
             section: "",
             row: "",
@@ -182,7 +210,8 @@ extension AttendedGame {
             highlights: [],
             milestones: [],
             emailSubject: emailSubject,
-            source: source
+            source: source,
+            status: isFinal ? .completed : .upcoming
         )
     }
 }

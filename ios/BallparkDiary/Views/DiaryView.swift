@@ -15,6 +15,25 @@ struct DiaryView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
 
+                        if !store.upcomingGames.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("UPCOMING")
+                                    .font(.caps(11, weight: .heavy))
+                                    .tracking(3)
+                                    .foregroundStyle(Theme.lights)
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 6)
+
+                                ForEach(store.upcomingGames) { game in
+                                    NavigationLink(value: game) {
+                                        GameCard(game: game)
+                                            .padding(.horizontal, 16)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+
                         ForEach(Array(groupedGames.enumerated()), id: \.element.0) { _, group in
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(group.0.uppercased())
@@ -41,15 +60,17 @@ struct DiaryView: View {
             .navigationTitle("Diary")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .refreshable { await store.refresh() }
             .navigationDestination(for: AttendedGame.self) { game in
                 GameDetailView(game: game)
             }
         }
     }
 
-    /// Groups games by season-year, latest first.
+    /// Groups completed games by season-year, latest first. Upcoming games are
+    /// shown separately at the top of the list.
     private var groupedGames: [(String, [AttendedGame])] {
-        let groups = Dictionary(grouping: store.games) { g -> Int in
+        let groups = Dictionary(grouping: store.completedGames) { g -> Int in
             Calendar.current.component(.year, from: g.date)
         }
         return groups
@@ -163,22 +184,42 @@ struct GameCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Score block
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(game.userWon ? "W" : "L")
-                        .font(.scoreboard(18, weight: .black))
-                        .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
-                        .frame(width: 32, height: 22)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill((game.userWon ? Theme.grass : Theme.foul).opacity(0.15))
-                        )
-                    Text(game.scoreString)
-                        .font(.stat(18, weight: .heavy))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Final")
-                        .font(.caps(9, weight: .semibold))
-                        .tracking(1)
-                        .foregroundStyle(Theme.textMuted)
+                if game.isUpcoming {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Theme.lights)
+                            .frame(width: 32, height: 22)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Theme.lights.opacity(0.15))
+                            )
+                        Text(game.date.formatted(.dateTime.hour().minute()))
+                            .font(.stat(15, weight: .heavy))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("Upcoming")
+                            .font(.caps(9, weight: .semibold))
+                            .tracking(1)
+                            .foregroundStyle(Theme.lights)
+                    }
+                } else {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(game.userWon ? "W" : "L")
+                            .font(.scoreboard(18, weight: .black))
+                            .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
+                            .frame(width: 32, height: 22)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill((game.userWon ? Theme.grass : Theme.foul).opacity(0.15))
+                            )
+                        Text(game.scoreString)
+                            .font(.stat(18, weight: .heavy))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("Final")
+                            .font(.caps(9, weight: .semibold))
+                            .tracking(1)
+                            .foregroundStyle(Theme.textMuted)
+                    }
                 }
             }
             .padding(.horizontal, 14)

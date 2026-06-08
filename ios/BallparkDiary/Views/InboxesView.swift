@@ -1,20 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// Tab where the user manages every inbox feeding their diary. Shows the
-/// combined total at the top so it's obvious that tickets from all inboxes
-/// are merged into a single set of statistics.
+/// Tab where the user manages what feeds their diary. Games come from tickets
+/// shared into the app and from manual entries — combined into a single set of
+/// statistics. Pull down to import newly-shared tickets and refresh scores.
 struct InboxesView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(StoreViewModel.self) private var storeKit
-    @State private var showAddSheet: Bool = false
     @State private var showManualSheet: Bool = false
     @State private var showPaywall: Bool = false
-
-    /// Inboxes that count toward the free 1-inbox limit (manual entries are free & unlimited).
-    private var connectedRealInboxes: Int {
-        store.connectedInboxes.filter { $0.provider != .manual }.count
-    }
 
     var body: some View {
         NavigationStack {
@@ -25,8 +19,6 @@ struct InboxesView: View {
                     VStack(spacing: 14) {
                         CombinedSummary()
 
-                        ForwardingCard()
-
                         ShareImportCard()
 
                         if !storeKit.isPremium {
@@ -34,7 +26,7 @@ struct InboxesView: View {
                         }
 
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Connected".uppercased())
+                            Text("Sources".uppercased())
                                 .font(.caps(11, weight: .heavy))
                                 .tracking(2.5)
                                 .foregroundStyle(Theme.clay)
@@ -49,21 +41,13 @@ struct InboxesView: View {
                             }
                         }
 
-                        AddInboxCTA {
-                            if storeKit.isPremium || connectedRealInboxes < 1 {
-                                showAddSheet = true
-                            } else {
-                                showPaywall = true
-                            }
-                        }
-
                         ManualEntryCTA(
                             manualCount: store.connectedInboxes.first(where: { $0.provider == .manual })?.ticketsFound ?? 0
                         ) {
                             showManualSheet = true
                         }
 
-                        Text("All tickets from every inbox are combined into one diary. Your games, ballparks, runs and W-L always reflect the total.")
+                        Text("Every game — shared or added by hand — is combined into one diary. Your games, ballparks, runs and W-L always reflect the total.")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.textMuted)
                             .multilineTextAlignment(.center)
@@ -76,14 +60,10 @@ struct InboxesView: View {
                     .padding(.top, 8)
                 }
             }
-            .navigationTitle("Inboxes")
+            .navigationTitle("Sources")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .task { await store.refreshForwarding() }
-            .refreshable { await store.refreshForwarding() }
-            .sheet(isPresented: $showAddSheet) {
-                AddInboxSheet()
-            }
+            .refreshable { await store.refresh() }
             .sheet(isPresented: $showManualSheet) {
                 ManualGameEntryView()
             }
@@ -127,7 +107,7 @@ private struct CombinedSummary: View {
             }
 
             HStack(spacing: 10) {
-                MiniStat(value: "\(store.connectedInboxes.count)", label: "Inboxes")
+                MiniStat(value: "\(store.upcomingGames.count)", label: "Upcoming")
                 MiniStat(value: "\(store.ballparkCount)", suffix: "/30", label: "Ballparks")
                 MiniStat(value: "\(store.totalRuns)", label: "Runs")
             }
@@ -137,10 +117,10 @@ private struct CombinedSummary: View {
     }
 
     private var subtitle: String {
-        let n = store.connectedInboxes.count
-        if n == 0 { return "No inboxes connected yet" }
-        if n == 1 { return "From 1 inbox · merged" }
-        return "From \(n) inboxes · merged"
+        let upcoming = store.upcomingGames.count
+        if store.totalGames == 0 && upcoming == 0 { return "Share a ticket to start your diary" }
+        if upcoming > 0 { return "\(upcoming) upcoming \(upcoming == 1 ? "game" : "games") on deck" }
+        return "Pull down to import new tickets"
     }
 }
 
@@ -174,90 +154,6 @@ private struct MiniStat: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.cardElevated)
         )
-    }
-}
-
-// MARK: - Forwarding card
-
-/// Primary auto-import path: the user forwards ticket receipts to a personal
-/// address and we parse + confirm the game server-side. No mailbox access.
-private struct ForwardingCard: View {
-    @Environment(DiaryStore.self) private var store
-    @State private var didCopy: Bool = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(InboxProvider.forwarding.brandColor)
-                    .frame(width: 38, height: 38)
-                    .background(Circle().fill(InboxProvider.forwarding.brandColor.opacity(0.18)))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Auto-import by email")
-                        .font(.system(size: 16, weight: .heavy))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Forward any ticket receipt — we add the game")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.textSecondary)
-                }
-            }
-
-            if store.forwardingConfigured, let address = store.forwardingAddress {
-                Button {
-                    UIPasteboard.general.string = address
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.success)
-                    withAnimation(.snappy) { didCopy = true }
-                    Task {
-                        try? await Task.sleep(for: .seconds(2))
-                        withAnimation(.snappy) { didCopy = false }
-                    }
-                } label: {
-                    HStack(spacing: 10) {
-                        Text(address)
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 8)
-                        Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(didCopy ? InboxProvider.forwarding.brandColor : Theme.clay)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Theme.cardElevated)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                Text(didCopy ? "Copied! Paste it as a forwarding address in your mail app."
-                     : "Tip: set this as an auto-forward filter for Ticketmaster, SeatGeek, StubHub & MLB emails.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.textMuted)
-            } else {
-                HStack(spacing: 8) {
-                    Image(systemName: "clock.badge.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Theme.lights)
-                    Text("Your forwarding address is being set up — check back soon.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.textSecondary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Theme.cardElevated)
-                )
-            }
-        }
-        .padding(16)
-        .nightCard()
     }
 }
 
@@ -297,7 +193,7 @@ private struct ShareImportCard: View {
                     .fill(Theme.cardElevated)
             )
 
-            Text("Nothing leaves your phone — no email login, no accounts.")
+            Text("Nothing leaves your phone — no email login, no accounts. Pull down to refresh after sharing.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textMuted)
         }
@@ -345,7 +241,7 @@ private struct InboxRow: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
-                Text("\(inbox.ticketsFound) tickets · \(inbox.provider.name)")
+                Text("\(inbox.ticketsFound) \(inbox.ticketsFound == 1 ? "game" : "games") · \(inbox.provider.name)")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -356,7 +252,7 @@ private struct InboxRow: View {
                 Button(role: .destructive) {
                     store.disconnect(inbox)
                 } label: {
-                    Label("Disconnect inbox", systemImage: "trash")
+                    Label("Remove source", systemImage: "trash")
                 }
             } label: {
                 Image(systemName: "ellipsis.circle.fill")
@@ -378,10 +274,10 @@ private struct EmptyInboxesHint: View {
             Image(systemName: "tray")
                 .font(.system(size: 28, weight: .regular))
                 .foregroundStyle(Theme.textMuted)
-            Text("No inboxes connected")
+            Text("No games yet")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
-            Text("Connect one below to start your diary.")
+            Text("Share a ticket in or add one by hand to begin.")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textMuted)
         }
@@ -412,7 +308,7 @@ private struct ProUpgradeBanner: View {
                     Text("Ballpark Diary Pro")
                         .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Unlimited inboxes, Wrapped, share cards & more · $9.99/yr")
+                    Text("Wrapped, share cards & more · $9.99/yr")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(2)
@@ -431,48 +327,6 @@ private struct ProUpgradeBanner: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .strokeBorder(Theme.lights.opacity(0.45), lineWidth: 1.2)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Add CTA
-
-private struct AddInboxCTA: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(Theme.clay)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Connect another inbox")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Add iCloud, Outlook, or another email")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.textSecondary)
-                }
-                Spacer()
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Theme.textMuted)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        Theme.clay.opacity(0.55),
-                        style: StrokeStyle(lineWidth: 1.4, dash: [6, 5])
-                    )
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Theme.clay.opacity(0.05))
-                    )
             )
         }
         .buttonStyle(.plain)
@@ -521,97 +375,5 @@ private struct ManualEntryCTA: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Add Inbox Sheet
-
-/// Modal flow for connecting an additional inbox after onboarding.
-/// Reuses the same ScanPanel so the experience is consistent end-to-end.
-struct AddInboxSheet: View {
-    @Environment(DiaryStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack {
-            Theme.nightGradient.ignoresSafeArea()
-            FieldLinesBackground()
-                .opacity(0.08)
-                .allowsHitTesting(false)
-
-            Group {
-                switch store.scanPhase {
-                case .idle:
-                    ChooseProviderPanel(onCancel: { dismiss() })
-                        .transition(.opacity)
-                case .connecting, .scanning, .finishing, .finished:
-                    ScanPanel()
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .animation(.smooth(duration: 0.45), value: store.scanPhase)
-        }
-        .task(id: store.scanPhase) {
-            if store.scanPhase == .finished {
-                try? await Task.sleep(for: .milliseconds(1500))
-                dismiss()
-            }
-        }
-        .presentationDragIndicator(.visible)
-    }
-}
-
-private struct ChooseProviderPanel: View {
-    @Environment(DiaryStore.self) private var store
-    let onCancel: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 18)
-
-            BaseballMark(size: 110)
-                .shadow(color: .black.opacity(0.45), radius: 16, y: 10)
-                .padding(.bottom, 18)
-
-            Text("ADD INBOX")
-                .font(.caps(12, weight: .heavy))
-                .tracking(5)
-                .foregroundStyle(Theme.clay)
-
-            Text("More inboxes,\nmore tickets found.")
-                .font(.scoreboard(28))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.top, 6)
-
-            Text("Tickets from each inbox combine into your single diary. Your totals always show every game across every email.")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 28)
-                .padding(.top, 10)
-
-            Spacer(minLength: 0)
-
-            VStack(spacing: 12) {
-                ForEach(InboxProvider.connectable) { provider in
-                    ConnectButton(
-                        provider: provider,
-                        isConnected: store.isProviderConnected(provider)
-                    ) {
-                        store.connect(provider: provider)
-                    }
-                }
-
-                Button(action: onCancel) {
-                    Text("Not now")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.textMuted)
-                        .padding(.vertical, 10)
-                }
-            }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 24)
-        }
     }
 }

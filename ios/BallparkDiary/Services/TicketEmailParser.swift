@@ -1,5 +1,16 @@
 import Foundation
 
+/// A lightweight ticket-text message fed to the parser. Sendable & isolation-
+/// free so it can be processed off the main actor. `snippet` carries the full
+/// extracted ticket text (OCR / PDF / shared text).
+nonisolated struct EmailMessage: Sendable, Hashable {
+    let id: String
+    let subject: String
+    let from: String
+    let snippet: String
+    let internalDate: Date
+}
+
 /// A candidate attended game detected from a ticket email. The date is a best
 /// guess from the email text (falling back to the received date); the team id
 /// is the MLB Stats API numeric id used to confirm the matchup against the
@@ -76,7 +87,12 @@ nonisolated enum TicketEmailParser {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         let matches = detector.matches(in: text, options: [], range: range)
         let now = Date()
-        return matches.compactMap { $0.date }.filter { $0 <= now.addingTimeInterval(60 * 60 * 24 * 2) }
+        // Tickets can be for past games (diary backfill) or upcoming games
+        // (future first pitch). Accept a wide window around now and let the MLB
+        // schedule confirmation pick the real game; reject only absurd outliers.
+        let earliest = now.addingTimeInterval(-60 * 60 * 24 * 365 * 30) // 30 yrs back
+        let latest = now.addingTimeInterval(60 * 60 * 24 * 400)          // ~13 mo ahead
+        return matches.compactMap { $0.date }.filter { $0 >= earliest && $0 <= latest }
     }
 
     private static func dedupedByDay(_ dates: [Date]) -> [Date] {

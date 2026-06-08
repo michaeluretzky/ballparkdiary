@@ -53,6 +53,7 @@ struct StatsView: View {
             .navigationTitle("Stats")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .refreshable { await store.refresh() }
         }
     }
 }

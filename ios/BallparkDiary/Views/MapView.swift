@@ -64,11 +64,11 @@ struct MapView: View {
     }
 
     private func visitCount(for park: Ballpark) -> Int {
-        store.games.filter { $0.ballparkId == park.id }.count
+        store.completedGames.filter { $0.ballparkId == park.id }.count
     }
 
     private func gamesAt(_ park: Ballpark) -> [AttendedGame] {
-        store.games.filter { $0.ballparkId == park.id }
+        store.completedGames.filter { $0.ballparkId == park.id }
     }
 }
 

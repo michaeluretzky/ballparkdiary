@@ -1,5 +1,4 @@
 import SwiftUI
-import GoogleSignIn
 import RevenueCat
 
 @main
@@ -24,16 +23,12 @@ struct BallparkDiaryApp: App {
                 .environment(storeKit)
                 .preferredColorScheme(.dark)
                 .tint(Theme.clay)
-                .onOpenURL { url in
-                    GIDSignIn.sharedInstance.handle(url)
-                }
                 .task {
-                    await GmailService.shared.restorePreviousSignIn()
-                    await store.importSharedTickets()
+                    await store.refresh()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
-                        Task { await store.importSharedTickets() }
+                        Task { await store.refresh() }
                     }
                 }
         }

@@ -1,0 +1,52 @@
+{
+  "theme": {
+    "style": "Deep navy and charcoal foundations with warm amber stadium-light accents, evoking the atmosphere of a night game seen from the upper deck. Lighting feels like artificial floodlights diffusing through humid summer air — rich, directional, and warm against a dark sky. Textures suggest aged leather and worn denim, not slick tech. The overall energy is nostalgic and personal, not corporate.",
+    "headlineFont": "font-family: 'Oswald', sans-serif; font-weight: 700; @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@700&display=swap');",
+    "headlineFontSize": 120,
+    "mockupIds": {
+      "iphone": "deep-blue",
+      "ipad": "space-gray"
+    },
+    "palette": {
+      "primary": "#0D1B2A",
+      "secondary": "#E8873A",
+      "accent": "#F5C518"
+    }
+  },
+  "slides": [
+    {
+      "label": "Welcome / how it works",
+      "backgroundPrompt": "Abstract digital art with sweeping luminous amber and warm gold arcs flowing diagonally from lower right to upper left across a deep navy to near-black gradient, broad soft halos of golden light bleeding outward like floodlights diffused through humid air, translucent layered planes of deep indigo catching amber highlights at their edges, the upper 30% fading to calm dark navy for text readability, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/abcb26b6-331c-4d6f-ad14-91b3d2abffe6.png"
+    },
+    {
+      "label": "Share a ticket",
+      "backgroundPrompt": "3D rendered abstract environment featuring a single massive warm clay-orange sphere of soft volumetric light positioned low-center in the frame, radiating long horizontal amber gradients across a deep charcoal to near-black background, thin wisps of warm smoke drifting gently from left to right, subtle grain texture across the whole surface adding analog warmth, the upper 30% dissolving into dark navy calm, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/3fdce4bc-b842-4be3-91d2-c32dfdccc5ab.png"
+    },
+    {
+      "label": "Ballpark map",
+      "backgroundPrompt": "Abstract digital art featuring a vast deep navy expanse scattered with dozens of tiny amber and pale gold orbs arranged in sweeping curved arcs across the frame, each orb surrounded by a soft halo of warm golden light, hair-thin luminous threads of pale amber connecting the orbs in loose constellation clusters, a deep indigo-to-midnight-blue atmospheric gradient as the base, the upper region open and very dark for text overlay, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/4803905b-f39b-4aa2-89da-0a0595f4e11c.png"
+    },
+    {
+      "label": "Career stats",
+      "backgroundPrompt": "Bold dark abstract scene with a dramatic vanishing-point perspective grid of luminous amber lines converging deep into a midnight charcoal background, warm gold light pooling along the converging lines like neon tubing, sharp geometric dark forms with rim-lit amber and brass edges flanking both sides, the composition heavy and confident, the upper 30% pure near-black for clear text contrast, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/cd46d016-bbfd-4879-b85f-380ef11c6f28.png"
+    },
+    {
+      "label": "Game detail",
+      "backgroundPrompt": "Abstract photorealistic close-up of layered translucent amber and deep sepia glass planes floating at shallow overlapping angles above a dark charcoal base, warm golden light refracting through each layer and casting soft caustic ripples across the surface, fine analog grain texture warming the whole image, a gentle fog of deep indigo pooling in the lower corners, the top zone fading cleanly to near-black deep navy, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/b8ef4c9a-ce32-4768-8a3e-acc70bd595c0.png"
+    }
+  ],
+  "headlines": {
+    "en": {
+      "Welcome / how it works": "Your Baseball<br>Journal",
+      "Share a ticket": "Just Share<br>A Ticket",
+      "Ballpark map": "All 30<br>Ballparks",
+      "Career stats": "Stats Only<br>You Have",
+      "Game detail": "Real Scores<br>Confirmed"
+    }
+  }
+}

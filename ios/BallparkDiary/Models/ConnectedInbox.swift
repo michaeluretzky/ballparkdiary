@@ -14,13 +14,11 @@ enum InboxProvider: String, CaseIterable, Hashable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    /// Providers shown in the connect/login UI. `forwarding` and `manual` are
-    /// excluded — they have their own dedicated CTAs. Gmail is excluded because
-    /// mailbox OAuth requires Google's restricted-scope verification; auto-import
-    /// now happens via email forwarding instead.
-    static var connectable: [InboxProvider] {
-        allCases.filter { $0 != .manual && $0 != .forwarding && $0 != .gmail && $0 != .shared }
-    }
+    /// Sources the diary is built from. The app imports games only from tickets
+    /// the user shares in (`shared`) or adds by hand (`manual`) — no email
+    /// access. Legacy cases are retained purely so older saved diaries still
+    /// decode cleanly.
+    static var connectable: [InboxProvider] { [] }
 
     var name: String {
         switch self {
