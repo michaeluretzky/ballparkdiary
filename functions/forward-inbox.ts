@@ -12,6 +12,10 @@ interface StoredRow {
   candidate_dates: string;
   source: string;
   subject: string;
+  section: string;
+  row: string;
+  seat: string;
+  confirmation: string | null;
   received_at: number;
   acked: number;
 }
@@ -27,6 +31,10 @@ export class ForwardInbox extends DurableObject {
         candidate_dates TEXT NOT NULL,
         source TEXT NOT NULL,
         subject TEXT NOT NULL,
+        section TEXT NOT NULL DEFAULT '',
+        row TEXT NOT NULL DEFAULT '',
+        seat TEXT NOT NULL DEFAULT '',
+        confirmation TEXT,
         received_at INTEGER NOT NULL,
         acked INTEGER NOT NULL DEFAULT 0
       )
@@ -59,14 +67,18 @@ export class ForwardInbox extends DurableObject {
   private add(candidate: DetectedCandidate): void {
     this.ctx.storage.sql.exec(
       `INSERT OR REPLACE INTO candidates
-       (id, team_mlb_id, opponent_mlb_id, candidate_dates, source, subject, received_at, acked)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+       (id, team_mlb_id, opponent_mlb_id, candidate_dates, source, subject, section, row, seat, confirmation, received_at, acked)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       candidate.id,
       candidate.teamMlbId,
       candidate.opponentMlbId,
       JSON.stringify(candidate.candidateDates),
       candidate.source,
       candidate.subject,
+      candidate.section ?? "",
+      candidate.row ?? "",
+      candidate.seat ?? "",
+      candidate.confirmation ?? null,
       Date.now(),
     );
   }
@@ -84,6 +96,10 @@ export class ForwardInbox extends DurableObject {
         candidateDates: JSON.parse(r.candidate_dates) as string[],
         source: r.source,
         subject: r.subject,
+        section: r.section ?? "",
+        row: r.row ?? "",
+        seat: r.seat ?? "",
+        confirmation: r.confirmation ?? null,
       }));
   }
 

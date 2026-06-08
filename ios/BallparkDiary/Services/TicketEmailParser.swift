@@ -31,6 +31,12 @@ nonisolated struct DetectedGame: Sendable, Hashable {
     let opponentMlbId: Int?
     let source: String
     let subject: String
+    /// Seat location extracted from the ticket text, if any.
+    let section: String
+    let row: String
+    let seat: String
+    /// Order / confirmation number found in the ticket, if any.
+    let confirmation: String?
 }
 
 /// Heuristic parser that scans ticket-receipt emails for an MLB matchup and a
@@ -50,13 +56,18 @@ nonisolated enum TicketEmailParser {
             let hints = extractDateHints(from: haystack)
             guard !hints.isEmpty else { continue }
 
+            let seats = extractSeatInfo(from: haystack)
             detected.append(
                 DetectedGame(
                     dateHints: hints,
                     teamMlbId: primary,
                     opponentMlbId: teams.dropFirst().first,
                     source: source(from: message.from, subject: message.subject),
-                    subject: message.subject.isEmpty ? message.snippet : message.subject
+                    subject: message.subject.isEmpty ? message.snippet : message.subject,
+                    section: seats.section,
+                    row: seats.row,
+                    seat: seats.seat,
+                    confirmation: seats.confirmation
                 )
             )
         }
@@ -85,6 +96,43 @@ nonisolated enum TicketEmailParser {
             result.append(hit.id)
         }
         return result
+    }
+
+    // MARK: - Seat extraction
+
+    private struct SeatInfo {
+        let section: String
+        let row: String
+        let seat: String
+        let confirmation: String?
+    }
+
+    /// Pull seat location and confirmation number out of ticket text using
+    /// the same patterns that ticketing platforms (Ticketmaster, StubHub,
+    /// SeatGeek, MLB Ballpark) use in their receipts.
+    private static func extractSeatInfo(from text: String) -> SeatInfo {
+        func firstMatch(_ pattern: String, group: Int = 1) -> String? {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+            let ns = text as NSString
+            guard let m = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+            if m.range(at: group).location == NSNotFound { return nil }
+            return ns.substring(with: m.range(at: group)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Section: "Section 123", "Sec 123", "Sect 123", "SEC 123"
+        let section = firstMatch(#"\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)"#) ?? ""
+
+        // Row: "Row 4", "Row: 4", "ROW A"
+        let row = firstMatch(#"\bRow\s*[:-]?\s*(\S+)"#) ?? ""
+
+        // Seat: "Seat 12", "Seat: 12", "Seats 11-12" — just grab the first number
+        let seat = firstMatch(#"\bSeats?\s*[:-]?\s*(\S+)"#) ?? ""
+
+        // Confirmation: "Confirmation #ABC123", "Conf#: XYZ", "Order #12345",
+        // "Order Number: ABC-123", "Confirmation Number: 1234567"
+        let confirmation = firstMatch(#"\b(?:Conf(?:irmation)?|Order)\s*(?:#|No\.?|Number:?)?\s*[:-]?\s*([A-Za-z0-9][A-Za-z0-9-]{2,20})"#)
+
+        return SeatInfo(section: section, row: row, seat: seat, confirmation: confirmation)
     }
 
     // MARK: - Date detection

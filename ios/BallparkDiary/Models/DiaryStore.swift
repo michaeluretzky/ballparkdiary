@@ -359,7 +359,11 @@ final class DiaryStore {
                     result: match,
                     source: candidate.source,
                     emailSubject: candidate.subject,
-                    favoriteTeamId: favoriteTeamId
+                    favoriteTeamId: favoriteTeamId,
+                    section: candidate.section,
+                    row: candidate.row,
+                    seat: candidate.seat,
+                    confirmation: candidate.confirmation
                 ) else { return nil }
                 // Pull verified facts, scoring plays and milestones for finished games.
                 if !base.isUpcoming, let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {

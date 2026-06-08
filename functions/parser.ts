@@ -14,6 +14,12 @@ export interface DetectedCandidate {
   candidateDates: string[];
   source: string;
   subject: string;
+  /** Seat location extracted from the ticket text, if any. */
+  section: string;
+  row: string;
+  seat: string;
+  /** Order / confirmation number found in the ticket, if any. */
+  confirmation: string | null;
 }
 
 /** Detect a ticket candidate from a single forwarded email. */
@@ -29,6 +35,7 @@ export function detectCandidate(input: {
   if (primary === undefined) return null;
 
   const dates = dedupedByDay([...extractDates(haystack), input.receivedAt]);
+  const seats = extractSeatInfo(haystack);
 
   return {
     id: crypto.randomUUID(),
@@ -37,6 +44,10 @@ export function detectCandidate(input: {
     candidateDates: dates.map((d) => d.toISOString()),
     source: sourceLabel(`${input.from} ${input.subject}`),
     subject: input.subject.trim().length > 0 ? input.subject.trim() : firstLine(input.text),
+    section: seats.section,
+    row: seats.row,
+    seat: seats.seat,
+    confirmation: seats.confirmation,
   };
 }
 
@@ -130,6 +141,30 @@ function dedupedByDay(dates: Date[]): Date[] {
     result.push(d);
   }
   return result;
+}
+
+// MARK: - Seat extraction
+
+interface SeatInfo {
+  section: string;
+  row: string;
+  seat: string;
+  confirmation: string | null;
+}
+
+/** Pull seat location and confirmation number out of ticket text. */
+function extractSeatInfo(text: string): SeatInfo {
+  const first = (pattern: RegExp): string => {
+    const m = text.match(pattern);
+    return m?.[1]?.trim() ?? "";
+  };
+
+  const section = first(/\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)/i);
+  const row = first(/\bRow\s*[:-]?\s*(\S+)/i);
+  const seat = first(/\bSeats?\s*[:-]?\s*(\S+)/i);
+  const confirmation = first(/\b(?:Conf(?:irmation)?|Order)\s*(?:#|No\.?|Number:?)?\s*[:-]?\s*([A-Za-z0-9][A-Za-z0-9-]{2,20})/i) || null;
+
+  return { section, row, seat, confirmation };
 }
 
 // MARK: - Source detection
