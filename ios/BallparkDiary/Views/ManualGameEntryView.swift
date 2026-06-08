@@ -184,6 +184,7 @@ struct ManualGameEntryView: View {
             section: section.isEmpty ? "—" : section,
             row: row.isEmpty ? "—" : row,
             seat: seat.isEmpty ? "—" : seat,
+            confirmation: nil,
             weather: weather,
             firstPitchTempF: 72,
             attendance: ballpark.capacity,

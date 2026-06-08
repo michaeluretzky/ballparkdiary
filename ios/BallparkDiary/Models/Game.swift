@@ -13,6 +13,10 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     let section: String
     let row: String
     let seat: String
+    /// Order / confirmation number pulled from the real ticket — proof this is a
+    /// purchased seat, not a random schedule match. Optional for backward-
+    /// compatible decoding of diaries saved before this field existed.
+    let confirmation: String?
     let weather: Weather
     let firstPitchTempF: Int
     let attendance: Int
@@ -42,6 +46,16 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     }
     var scoreString: String { isUpcoming ? "vs" : "\(awayScore) – \(homeScore)" }
 
+    /// Confirmation number to surface, if the ticket carried one.
+    var confirmationNumber: String? {
+        guard let confirmation, !confirmation.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return confirmation
+    }
+    /// Whether we have any real seat location from the ticket.
+    var hasSeatInfo: Bool {
+        [section, row, seat].contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty && $0 != "—" }
+    }
+
     /// Promote an upcoming game to completed once its real final score is known.
     func completed(homeScore: Int, awayScore: Int) -> AttendedGame {
         AttendedGame(
@@ -49,7 +63,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             homeTeamId: homeTeamId, awayTeamId: awayTeamId,
             homeScore: homeScore, awayScore: awayScore,
             userRootedForHome: userRootedForHome,
-            section: section, row: row, seat: seat,
+            section: section, row: row, seat: seat, confirmation: confirmation,
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
             highlights: highlights, milestones: milestones,
@@ -75,7 +89,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             homeTeamId: homeTeamId, awayTeamId: awayTeamId,
             homeScore: homeScore, awayScore: awayScore,
             userRootedForHome: userRootedForHome,
-            section: section, row: row, seat: seat,
+            section: section, row: row, seat: seat, confirmation: confirmation,
             weather: resolvedWeather ?? weather,
             firstPitchTempF: details.tempF > 0 ? details.tempF : firstPitchTempF,
             attendance: details.attendance > 0 ? details.attendance : attendance,
@@ -329,7 +343,11 @@ extension AttendedGame {
         result: MLBGameResult,
         source: String,
         emailSubject: String,
-        favoriteTeamId: String?
+        favoriteTeamId: String?,
+        section: String = "",
+        row: String = "",
+        seat: String = "",
+        confirmation: String? = nil
     ) -> AttendedGame? {
         guard
             let homeTeam = Team.by(mlbId: result.homeMlbId),
@@ -365,9 +383,10 @@ extension AttendedGame {
             homeScore: isFinal ? result.homeScore : 0,
             awayScore: isFinal ? result.awayScore : 0,
             userRootedForHome: rootedForHome,
-            section: "",
-            row: "",
-            seat: "",
+            section: section,
+            row: row,
+            seat: seat,
+            confirmation: confirmation,
             weather: weather,
             firstPitchTempF: 0,
             attendance: 0,
