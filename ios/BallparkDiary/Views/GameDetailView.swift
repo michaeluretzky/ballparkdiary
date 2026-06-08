@@ -1,5 +1,4 @@
 import SwiftUI
-import MapKit
 import UIKit
 
 /// Detail screen for a single attended game: scoreboard, ticket, ballpark, highlights.
@@ -277,11 +276,24 @@ private struct TicketStub: View {
     let game: AttendedGame
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("TICKET STUB")
-                    .font(.caps(10, weight: .heavy))
-                    .tracking(2.5)
-                    .foregroundStyle(Theme.parchmentInk.opacity(0.7))
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text("TICKET STUB")
+                        .font(.caps(10, weight: .heavy))
+                        .tracking(2.5)
+                        .foregroundStyle(Theme.parchmentInk.opacity(0.7))
+                    if let conf = game.confirmationNumber {
+                        Text("#\(conf)")
+                            .font(.caps(8, weight: .heavy))
+                            .tracking(1)
+                            .foregroundStyle(Theme.clay)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(Theme.clay.opacity(0.15))
+                            )
+                    }
+                }
                 Text(game.ballpark.name)
                     .font(.scoreboard(18, weight: .bold))
                     .foregroundStyle(Theme.parchmentInk)
@@ -350,22 +362,13 @@ private struct StubField: View {
     }
 }
 
-// MARK: - Ballpark mini-panel
+// MARK: - Ballpark panel with aerial + seat view
 
 private struct BallparkPanel: View {
     let game: AttendedGame
-    @State private var camera: MapCameraPosition
-
-    init(game: AttendedGame) {
-        self.game = game
-        _camera = State(initialValue: .region(MKCoordinateRegion(
-            center: game.ballpark.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
-        )))
-    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.system(size: 13, weight: .bold))
@@ -375,28 +378,46 @@ private struct BallparkPanel: View {
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
 
-            Map(position: $camera, interactionModes: []) {
-                Annotation("", coordinate: game.ballpark.coordinate) {
-                    ZStack {
-                        Circle().fill(Theme.lights.opacity(0.4)).frame(width: 42, height: 42).blur(radius: 6)
-                        Circle().fill(Theme.clayGradient).frame(width: 22, height: 22)
-                            .overlay(Circle().strokeBorder(Theme.lights, lineWidth: 1.5))
-                            .overlay(Image(systemName: "baseball.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(.white))
+            // Aerial photo from MapKit satellite
+            BallparkSnapshot(ballpark: game.ballpark, span: 0.008)
+                .frame(height: 180)
+                .clipShape(.rect(cornerRadius: 12))
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            // Seat perspective — only when ticket has real seat info
+            if game.hasSeatInfo {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "eyes")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Theme.lights)
+                        Text("VIEW FROM YOUR SEAT")
+                            .font(.caps(9, weight: .heavy))
+                            .tracking(1.5)
+                            .foregroundStyle(Theme.lights.opacity(0.8))
+                        Spacer()
+                        Text("Section \(game.section)")
+                            .font(.stat(10, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
                     }
+                    SeatPerspectiveView(game: game)
+                        .frame(height: 140)
+                        .clipShape(.rect(cornerRadius: 12))
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
             }
-            .mapStyle(.imagery(elevation: .realistic))
-            .frame(height: 150)
-            .clipShape(.rect(cornerRadius: 12))
-            .allowsHitTesting(false)
 
             Text(game.ballpark.trivia)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textSecondary)
                 .lineSpacing(2)
+                .padding(16)
         }
-        .padding(16)
         .nightCard()
     }
 }

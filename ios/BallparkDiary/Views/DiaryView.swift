@@ -115,123 +115,168 @@ private struct HeaderStat: View {
     }
 }
 
-// MARK: - Game card (vintage baseball card)
+// MARK: - Game card (B+C redesign — ballpark aerial hero, smaller scores)
 
 struct GameCard: View {
     let game: AttendedGame
 
     var body: some View {
         VStack(spacing: 0) {
-            // Color strip (team colors, gradient)
-            LinearGradient(
-                colors: [game.awayTeam.primary, game.homeTeam.primary],
-                startPoint: .leading, endPoint: .trailing
-            )
-            .frame(height: 4)
+            // Ballpark aerial hero
+            heroSection
 
-            HStack(spacing: 14) {
-                // Date stamp
-                VStack(spacing: 0) {
-                    Text(game.date.formatted(.dateTime.month(.abbreviated)).uppercased())
-                        .font(.caps(10, weight: .heavy))
-                        .tracking(1.2)
-                        .foregroundStyle(Theme.clay)
-                    Text(game.date.formatted(.dateTime.day()))
-                        .font(.scoreboard(28, weight: .black))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(String(Calendar.current.component(.year, from: game.date)))
-                        .font(.stat(10, weight: .semibold))
+            // Card body
+            VStack(spacing: 0) {
+                // Date + score bar
+                HStack(alignment: .center, spacing: 0) {
+                    dateBadge
+                    Spacer()
+                    scoreBlock
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+
+                // Team matchup
+                HStack(spacing: 6) {
+                    TeamChip(team: game.awayTeam, primary: false)
+                    Text("@")
+                        .font(.system(size: 10, weight: .heavy))
                         .foregroundStyle(Theme.textMuted)
+                    TeamChip(team: game.homeTeam, primary: true)
+                    Spacer()
                 }
-                .frame(width: 60)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Theme.cardElevated)
-                )
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
 
-                // Matchup + meta
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        TeamChip(team: game.awayTeam, primary: false)
-                        Text("@")
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundStyle(Theme.textMuted)
-                        TeamChip(team: game.homeTeam, primary: true)
-                    }
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.textSecondary)
-                        Text(game.ballpark.name)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.textSecondary)
-                            .lineLimit(1)
-                    }
-
-                    HStack(spacing: 10) {
-                        Label(game.weather.rawValue, systemImage: game.weather.symbol)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Theme.textMuted)
-                            .labelStyle(.titleAndIcon)
-                        Text("·").foregroundStyle(Theme.textMuted)
-                        Text("\(game.firstPitchTempF)°F")
-                            .font(.stat(11, weight: .semibold))
-                            .foregroundStyle(Theme.textMuted)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Score block
-                if game.isUpcoming {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Theme.lights)
-                            .frame(width: 32, height: 22)
+                // Venue + confirmation row
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.clay)
+                    Text(game.ballpark.name)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                    Spacer()
+                    if let conf = game.confirmationNumber {
+                        Text("#\(conf)")
+                            .font(.caps(9, weight: .heavy))
+                            .tracking(0.8)
+                            .foregroundStyle(Theme.lights.opacity(0.85))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
                             .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Theme.lights.opacity(0.15))
+                                Capsule().fill(Theme.lights.opacity(0.12))
                             )
-                        Text(game.date.formatted(.dateTime.hour().minute()))
-                            .font(.stat(15, weight: .heavy))
-                            .foregroundStyle(Theme.textPrimary)
-                        Text("Upcoming")
-                            .font(.caps(9, weight: .semibold))
-                            .tracking(1)
-                            .foregroundStyle(Theme.lights)
-                    }
-                } else {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text(game.userWon ? "W" : "L")
-                            .font(.scoreboard(18, weight: .black))
-                            .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
-                            .frame(width: 32, height: 22)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill((game.userWon ? Theme.grass : Theme.foul).opacity(0.15))
-                            )
-                        Text(game.scoreString)
-                            .font(.stat(18, weight: .heavy))
-                            .foregroundStyle(Theme.textPrimary)
-                        Text("Final")
-                            .font(.caps(9, weight: .semibold))
-                            .tracking(1)
-                            .foregroundStyle(Theme.textMuted)
                     }
                 }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .background(Theme.card)
         }
-        .background(Theme.card)
         .clipShape(.rect(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.06))
         )
         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
+    }
+
+    // MARK: - Hero section
+
+    private var heroSection: some View {
+        ZStack(alignment: .bottomLeading) {
+            BallparkSnapshot(ballpark: game.ballpark)
+                .frame(height: 140)
+                .clipped()
+
+            // Gradient fade at bottom for text legibility
+            LinearGradient(
+                colors: [.clear, Theme.card.opacity(0.95)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: 60)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+
+            // Weather badge top-right
+            if game.firstPitchTempF > 0 || game.weather != .clear {
+                HStack(spacing: 4) {
+                    Image(systemName: game.weather.symbol)
+                        .font(.system(size: 10, weight: .bold))
+                    Text("\(game.firstPitchTempF)°")
+                        .font(.stat(10, weight: .heavy))
+                }
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.ultraThinMaterial)
+                .clipShape(.capsule)
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+        }
+    }
+
+    // MARK: - Date badge
+
+    private var dateBadge: some View {
+        HStack(spacing: 8) {
+            Text(game.date.formatted(.dateTime.month(.abbreviated)).uppercased())
+                .font(.caps(10, weight: .heavy))
+                .tracking(1)
+                .foregroundStyle(Theme.clay)
+            Text(game.date.formatted(.dateTime.day()))
+                .font(.stat(20, weight: .heavy))
+                .foregroundStyle(Theme.textPrimary)
+            Text("'\(String(Calendar.current.component(.year, from: game.date)).suffix(2))")
+                .font(.stat(11, weight: .semibold))
+                .foregroundStyle(Theme.textMuted)
+        }
+    }
+
+    // MARK: - Score block (compact)
+
+    private var scoreBlock: some View {
+        Group {
+            if game.isUpcoming {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text(game.date.formatted(.dateTime.hour().minute()))
+                        .font(.stat(14, weight: .heavy))
+                        .foregroundStyle(Theme.textPrimary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.lights.opacity(0.10))
+                )
+            } else {
+                HStack(spacing: 8) {
+                    Text(game.userWon ? "W" : "L")
+                        .font(.scoreboard(13, weight: .black))
+                        .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
+                        .frame(width: 26, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill((game.userWon ? Theme.grass : Theme.foul).opacity(0.15))
+                        )
+                    Text(game.scoreString)
+                        .font(.stat(14, weight: .heavy))
+                        .foregroundStyle(Theme.textPrimary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.cardElevated)
+                )
+            }
+        }
     }
 }
 
