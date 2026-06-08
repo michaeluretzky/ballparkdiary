@@ -62,6 +62,27 @@ extension Team {
     ]
 
     static func by(id: String) -> Team? { all.first(where: { $0.id == id }) }
+
+    /// Maps our internal slug ids to the numeric team ids used by the public
+    /// MLB Stats API (statsapi.mlb.com). Used to enrich scanned games with the
+    /// real final score, venue and date.
+    static let mlbIds: [String: Int] = [
+        "laa": 108, "ari": 109, "bal": 110, "bos": 111, "chc": 112,
+        "cin": 113, "cle": 114, "col": 115, "det": 116, "hou": 117,
+        "kc": 118, "lad": 119, "wsh": 120, "nym": 121, "ath": 133,
+        "pit": 134, "sd": 135, "sea": 136, "sf": 137, "stl": 138,
+        "tb": 139, "tex": 140, "tor": 141, "min": 142, "phi": 143,
+        "atl": 144, "cws": 145, "mia": 146, "nyy": 147, "mil": 158
+    ]
+
+    /// The numeric MLB Stats API id for this team.
+    var mlbId: Int { Team.mlbIds[id] ?? 0 }
+
+    /// Reverse lookup: find a team from its MLB Stats API numeric id.
+    static func by(mlbId: Int) -> Team? {
+        guard let slug = mlbIds.first(where: { $0.value == mlbId })?.key else { return nil }
+        return by(id: slug)
+    }
 }
 
 extension Color {

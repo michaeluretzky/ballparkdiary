@@ -1,9 +1,11 @@
 import SwiftUI
 import MapKit
+import UIKit
 
 /// Detail screen for a single attended game: scoreboard, ticket, ballpark, highlights.
 struct GameDetailView: View {
     let game: AttendedGame
+    @State private var shareImage: Image? = nil
 
     var body: some View {
         ZStack {
@@ -43,6 +45,98 @@ struct GameDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.nightDeep, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if let shareImage {
+                    ShareLink(
+                        item: shareImage,
+                        preview: SharePreview("\(game.awayTeam.abbreviation) @ \(game.homeTeam.abbreviation)", image: shareImage)
+                    ) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+            }
+        }
+        .task { renderShareCard() }
+    }
+
+    @MainActor
+    private func renderShareCard() {
+        let renderer = ImageRenderer(content: ShareableGameCard(game: game).frame(width: 360, height: 480))
+        renderer.scale = UIScreen.main.scale
+        if let uiImage = renderer.uiImage {
+            shareImage = Image(uiImage: uiImage)
+        }
+    }
+}
+
+// MARK: - Shareable card
+
+/// A polished, image-exportable summary of a single game for sharing.
+private struct ShareableGameCard: View {
+    let game: AttendedGame
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Text("BALLPARK DIARY")
+                .font(.caps(13, weight: .heavy))
+                .tracking(6)
+                .foregroundStyle(Theme.clay)
+
+            Text(game.date.formatted(date: .abbreviated, time: .omitted).uppercased())
+                .font(.caps(11, weight: .heavy))
+                .tracking(3)
+                .foregroundStyle(Theme.lights)
+
+            HStack(spacing: 18) {
+                cardTeam(game.awayTeam, score: game.awayScore, winner: game.awayScore > game.homeScore)
+                Text("@")
+                    .font(.scoreboard(20, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+                cardTeam(game.homeTeam, score: game.homeScore, winner: game.homeScore > game.awayScore)
+            }
+            .padding(.vertical, 8)
+
+            Text(game.ballpark.name)
+                .font(.scoreboard(20, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+                .multilineTextAlignment(.center)
+            Text("\(game.ballpark.city), \(game.ballpark.state)")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+
+            HStack(spacing: 6) {
+                Image(systemName: game.userWon ? "hand.thumbsup.fill" : "hand.thumbsdown.fill")
+                Text(game.userWon ? "I saw a win" : "I was there for the loss")
+            }
+            .font(.caps(12, weight: .heavy))
+            .tracking(1.5)
+            .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
+            .padding(.top, 4)
+
+            Spacer(minLength: 0)
+
+            BaseballMark(size: 44)
+        }
+        .padding(28)
+        .frame(width: 360, height: 480)
+        .background(Theme.nightGradient)
+    }
+
+    private func cardTeam(_ team: Team, score: Int, winner: Bool) -> some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle().fill(team.primary)
+                Circle().strokeBorder(team.secondary, lineWidth: 2)
+                Text(team.abbreviation)
+                    .font(.stat(16, weight: .heavy))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 60, height: 60)
+            Text("\(score)")
+                .font(.scoreboard(46, weight: .black))
+                .foregroundStyle(winner ? Theme.textPrimary : Theme.textMuted)
+        }
     }
 }
 

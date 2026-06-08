@@ -15,12 +15,26 @@ struct StatsView: View {
                         HeroSummary()
                             .padding(.horizontal, 16)
 
+                        // On this day
+                        if !store.onThisDayGames.isEmpty {
+                            OnThisDayCard()
+                                .padding(.horizontal, 16)
+                        }
+
                         // Record / win pct
                         RecordCard()
                             .padding(.horizontal, 16)
 
+                        // Lucky charm
+                        LuckyCharmCard()
+                            .padding(.horizontal, 16)
+
                         // Ballparks unlocked
                         BallparkProgressCard()
+                            .padding(.horizontal, 16)
+
+                        // 30-ballpark quest
+                        BallparkQuestCard()
                             .padding(.horizontal, 16)
 
                         // Milestones
@@ -292,6 +306,179 @@ private struct MilestonesCard: View {
                             .fill(Theme.cardElevated.opacity(m.unlocked ? 1.0 : 0.6))
                     )
                     .opacity(m.unlocked ? 1.0 : 0.7)
+                }
+            }
+        }
+        .padding(16)
+        .nightCard()
+    }
+}
+
+// MARK: - On this day
+
+private struct OnThisDayCard: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("On This Day".uppercased())
+                    .font(.caps(11, weight: .heavy))
+                    .tracking(2.5)
+                    .foregroundStyle(Theme.clay)
+            }
+
+            ForEach(store.onThisDayGames) { game in
+                NavigationLink(value: game) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle().fill(game.winnerTeam.primary)
+                            Text("\(yearsAgo(game.date))")
+                                .font(.stat(15, weight: .heavy))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(width: 44, height: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(game.awayTeam.abbreviation) \(game.awayScore) – \(game.homeScore) \(game.homeTeam.abbreviation)")
+                                .font(.scoreboard(15, weight: .bold))
+                                .foregroundStyle(Theme.textPrimary)
+                            Text("\(game.ballpark.name) · \(yearsAgoLabel(game.date))")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardElevated))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .nightCard()
+        .navigationDestination(for: AttendedGame.self) { GameDetailView(game: $0) }
+    }
+
+    private func yearsAgo(_ date: Date) -> Int {
+        max(1, Calendar.current.dateComponents([.year], from: date, to: .now).year ?? 1)
+    }
+    private func yearsAgoLabel(_ date: Date) -> String {
+        let y = Calendar.current.dateComponents([.year], from: date, to: .now).year ?? 0
+        return y <= 0 ? "earlier this year" : (y == 1 ? "1 year ago today" : "\(y) years ago today")
+    }
+}
+
+// MARK: - Lucky charm
+
+private struct LuckyCharmCard: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Lucky Charm".uppercased())
+                .font(.caps(11, weight: .heavy))
+                .tracking(2.5)
+                .foregroundStyle(Theme.clay)
+
+            if let charm = store.luckyCharm, charm.wins + charm.losses > 0 {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(charm.team.primary)
+                        Circle().strokeBorder(charm.team.secondary, lineWidth: 2)
+                        Text(charm.team.abbreviation)
+                            .font(.stat(14, weight: .heavy))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 52, height: 52)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(charm.team.fullName) are \(charm.wins)–\(charm.losses)")
+                            .font(.scoreboard(17, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text(charmBlurb(charm))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+            } else {
+                Text("Attend a game with your favorite team to unlock your lucky-charm record.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textMuted)
+            }
+        }
+        .padding(16)
+        .nightCard()
+    }
+
+    private func charmBlurb(_ charm: (wins: Int, losses: Int, team: Team)) -> String {
+        let total = charm.wins + charm.losses
+        let pct = total > 0 ? Int(Double(charm.wins) / Double(total) * 100) : 0
+        if pct >= 60 { return "They win \(pct)% of the time when you're in the stands. Keep showing up." }
+        if pct >= 40 { return "A true coin flip with you watching — \(pct)% wins." }
+        return "Tough luck so far — \(pct)% wins when you attend."
+    }
+}
+
+// MARK: - 30 ballpark quest
+
+private struct BallparkQuestCard: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("The 30-Ballpark Quest".uppercased())
+                    .font(.caps(11, weight: .heavy))
+                    .tracking(2.5)
+                    .foregroundStyle(Theme.clay)
+                Spacer()
+                Text("\(store.ballparkCount)/30")
+                    .font(.stat(13, weight: .heavy))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+
+            if store.ballparksRemaining.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text("Quest complete — all 30 ballparks visited. You're a Pilgrim.")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                }
+            } else {
+                Text("\(store.ballparksRemaining.count) to go. Next up:")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                VStack(spacing: 8) {
+                    ForEach(store.ballparksRemaining.prefix(3)) { park in
+                        HStack(spacing: 10) {
+                            Image(systemName: "mappin.circle.fill")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(park.team.primary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(park.name)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(1)
+                                Text("\(park.city), \(park.state)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.cardElevated))
+                    }
                 }
             }
         }

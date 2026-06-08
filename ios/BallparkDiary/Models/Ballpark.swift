@@ -62,4 +62,9 @@ extension Ballpark {
     static func by(id: String) -> Ballpark? {
         all.first(where: { $0.id == id })
     }
+
+    /// The current home ballpark for a given team slug.
+    static func by(teamId: String) -> Ballpark? {
+        all.first(where: { $0.team.id == teamId })
+    }
 }

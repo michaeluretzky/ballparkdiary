@@ -291,7 +291,7 @@ private struct HeroPanel: View {
 struct LegalDisclaimer: View {
     var body: some View {
         VStack(spacing: 6) {
-            Text("We only scan for ticket-related receipts. Email content is processed on-device and never stored or shared.")
+            Text("Read-only mail access is used only to find ticket receipts. Emails are read on your device, never stored on our servers, and never shared. You can disconnect anytime.")
                 .font(.system(size: 10.5))
                 .foregroundStyle(Theme.textMuted)
                 .multilineTextAlignment(.center)

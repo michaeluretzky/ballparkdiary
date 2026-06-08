@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		XX6B55EF5BDBB06FA78746XX /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = XX1523791DAAC03A11009CXX /* GoogleSignInSwift */; };
+		XXC2732D520C02064817F5XX /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = XXB48B343CDA2FFA072770XX /* GoogleSignIn */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		105FC58A2E9EAD3200EA8BCF /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,29 +34,13 @@
 		105FC5932E9EAD3200EA8BCF /* BallparkDiaryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BallparkDiaryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		105FC57C2E9EAD3100EA8BCF /* BallparkDiary */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = BallparkDiary;
-			sourceTree = "<group>";
-		};
-		105FC58C2E9EAD3200EA8BCF /* BallparkDiaryTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = BallparkDiaryTests;
-			sourceTree = "<group>";
-		};
-		105FC5962E9EAD3200EA8BCF /* BallparkDiaryUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = BallparkDiaryUITests;
-			sourceTree = "<group>";
-		};
-/* End PBXFileSystemSynchronizedRootGroup section */
-
 /* Begin PBXFrameworksBuildPhase section */
 		105FC5772E9EAD3100EA8BCF /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				XXC2732D520C02064817F5XX /* GoogleSignIn in Frameworks */,
+				XX6B55EF5BDBB06FA78746XX /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,6 +59,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		105FC57C2E9EAD3100EA8BCF /* BallparkDiary */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BallparkDiary;
+			sourceTree = "<group>";
+		};
+		105FC58C2E9EAD3200EA8BCF /* BallparkDiaryTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BallparkDiaryTests;
+			sourceTree = "<group>";
+		};
+		105FC5962E9EAD3200EA8BCF /* BallparkDiaryUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BallparkDiaryUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXGroup section */
 		105FC5712E9EAD3100EA8BCF = {
@@ -112,6 +119,8 @@
 			);
 			name = BallparkDiary;
 			packageProductDependencies = (
+				XXB48B343CDA2FFA072770XX /* GoogleSignIn */,
+				XX1523791DAAC03A11009CXX /* GoogleSignInSwift */,
 			);
 			productName = BallparkDiary;
 			productReference = 105FC57A2E9EAD3100EA8BCF /* BallparkDiary.app */;
@@ -203,6 +212,9 @@
 				105FC5792E9EAD3100EA8BCF /* BallparkDiary */,
 				105FC5882E9EAD3200EA8BCF /* BallparkDiaryTests */,
 				105FC5922E9EAD3200EA8BCF /* BallparkDiaryUITests */,
+			);
+			packageReferences = (
+				XX5E367D25F4C8BB4A06F5XX /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 		};
 /* End PBXProject section */
@@ -466,7 +478,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "app.rork.w8eewhvpa28g5c9ao7fpw.tests";
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.w8eewhvpa28g5c9ao7fpw.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -488,7 +500,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "app.rork.w8eewhvpa28g5c9ao7fpw.tests";
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.w8eewhvpa28g5c9ao7fpw.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -508,7 +520,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "app.rork.w8eewhvpa28g5c9ao7fpw.uitests";
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.w8eewhvpa28g5c9ao7fpw.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -528,7 +540,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "app.rork.w8eewhvpa28g5c9ao7fpw.uitests";
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.w8eewhvpa28g5c9ao7fpw.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -580,6 +592,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		XX5E367D25F4C8BB4A06F5XX /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		XX1523791DAAC03A11009CXX /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = XX5E367D25F4C8BB4A06F5XX /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+		XXB48B343CDA2FFA072770XX /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = XX5E367D25F4C8BB4A06F5XX /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 105FC5722E9EAD3100EA8BCF /* Project object */;
 }

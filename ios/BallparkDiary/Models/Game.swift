@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single MLB game the user attended, derived from a parsed email ticket.
-struct AttendedGame: Identifiable, Hashable {
+struct AttendedGame: Identifiable, Hashable, Codable {
     let id: UUID
     let date: Date
     let ballparkId: String
@@ -33,7 +33,7 @@ struct AttendedGame: Identifiable, Hashable {
     }
     var scoreString: String { "\(awayScore) – \(homeScore)" }
 
-    enum Weather: String, CaseIterable {
+    enum Weather: String, CaseIterable, Codable {
         case clear = "Clear"
         case partlyCloudy = "Partly Cloudy"
         case cloudy = "Cloudy"
@@ -53,11 +53,11 @@ struct AttendedGame: Identifiable, Hashable {
         }
     }
 
-    struct Highlight: Hashable {
+    struct Highlight: Hashable, Codable {
         let inning: String      // "T7", "B9"
         let description: String // "Judge solo HR to deep CF (412 ft)"
         let kind: Kind
-        enum Kind: String { case homeRun, hit, pitching, defense, walkoff }
+        enum Kind: String, Codable { case homeRun, hit, pitching, defense, walkoff }
 
         var symbol: String {
             switch kind {
@@ -74,7 +74,7 @@ struct AttendedGame: Identifiable, Hashable {
 /// A career milestone reached by an MLB player during a game the user
 /// attended. Sourced (in a future version) from the MLB Stats API; for now
 /// curated in MockData. Tapping a milestone opens a detail screen.
-struct PlayerMilestone: Identifiable, Hashable {
+struct PlayerMilestone: Identifiable, Hashable, Codable {
     let id: UUID
     let playerName: String
     let teamId: String
@@ -87,7 +87,7 @@ struct PlayerMilestone: Identifiable, Hashable {
 
     var team: Team { Team.by(id: teamId) ?? .yankees }
 
-    enum Category: String {
+    enum Category: String, Codable {
         case homeRun
         case hits
         case strikeouts
@@ -125,5 +125,64 @@ struct PlayerMilestone: Identifiable, Hashable {
             case .milestone: return "Milestone"
             }
         }
+    }
+}
+
+// MARK: - Building attended games from real data
+
+extension AttendedGame {
+    /// Build an attended game from a confirmed MLB Stats API result plus the
+    /// originating ticket email. Score, teams, venue and date are real; seat
+    /// details and rooting interest are best-effort from the user's profile.
+    static func from(
+        result: MLBGameResult,
+        source: String,
+        emailSubject: String,
+        favoriteTeamId: String?
+    ) -> AttendedGame? {
+        guard
+            let homeTeam = Team.by(mlbId: result.homeMlbId),
+            let awayTeam = Team.by(mlbId: result.awayMlbId),
+            let ballpark = Ballpark.by(teamId: homeTeam.id)
+        else { return nil }
+
+        let rootedForHome: Bool
+        if favoriteTeamId == homeTeam.id {
+            rootedForHome = true
+        } else if favoriteTeamId == awayTeam.id {
+            rootedForHome = false
+        } else {
+            rootedForHome = true
+        }
+
+        let weather: Weather = {
+            switch ballpark.roof {
+            case .dome: return .dome
+            case .retractable, .open:
+                return result.dayNight.lowercased() == "day" ? .clear : .night
+            }
+        }()
+
+        return AttendedGame(
+            id: UUID(),
+            date: result.date,
+            ballparkId: ballpark.id,
+            homeTeamId: homeTeam.id,
+            awayTeamId: awayTeam.id,
+            homeScore: result.homeScore,
+            awayScore: result.awayScore,
+            userRootedForHome: rootedForHome,
+            section: "",
+            row: "",
+            seat: "",
+            weather: weather,
+            firstPitchTempF: 0,
+            attendance: 0,
+            durationMinutes: 0,
+            highlights: [],
+            milestones: [],
+            emailSubject: emailSubject,
+            source: source
+        )
     }
 }

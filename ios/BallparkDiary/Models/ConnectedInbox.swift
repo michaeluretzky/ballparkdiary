@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// The mail provider a user can connect to scan for ticket receipts.
-enum InboxProvider: String, CaseIterable, Hashable, Identifiable {
+enum InboxProvider: String, CaseIterable, Hashable, Identifiable, Codable {
     case gmail
     case icloud
     case outlook
@@ -73,9 +73,9 @@ enum InboxProvider: String, CaseIterable, Hashable, Identifiable {
 
 /// A single connected inbox. Each one contributes its attended games into the
 /// shared diary, but stats are always computed across all connected inboxes.
-struct ConnectedInbox: Identifiable, Hashable {
+struct ConnectedInbox: Identifiable, Hashable, Codable {
     let id: UUID
-    let email: String
+    var email: String
     let provider: InboxProvider
     var ticketsFound: Int
     let connectedAt: Date

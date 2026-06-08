@@ -5,6 +5,11 @@ import Observation
 /// derived from them, the onboarding scan flow, and all derived statistics.
 /// All tickets from every connected inbox are merged into a single diary so
 /// stats always reflect the user's *combined* total.
+///
+/// Gmail inboxes are scanned for real: the user signs in with Google, we read
+/// ticket-receipt emails (read-only), detect MLB matchups, and confirm each one
+/// against the public MLB Stats API for the true final score. Other providers
+/// and the cloud-preview fallback use a clearly-labelled demo scan.
 @Observable
 final class DiaryStore {
     enum ScanPhase: Equatable {
@@ -19,21 +24,30 @@ final class DiaryStore {
     var hasAcceptedTerms: Bool = false
     var hasCompletedOnboarding: Bool = false
     var scanPhase: ScanPhase = .idle
+    var scanError: String? = nil
     var foundEmails: [String] = []                      // subjects revealed during current scan
     var connectedInboxes: [ConnectedInbox] = []         // successfully connected inboxes
     var pendingInbox: ConnectedInbox? = nil             // inbox currently being scanned
     var favoriteTeamId: String = Team.yankees.id
+
+    /// Attended games keyed by the inbox they were sourced from. The merged
+    /// diary (`games`) is the union of every value, sorted newest-first.
+    var gamesByInbox: [UUID: [AttendedGame]] = [:]
+
+    private let defaults = UserDefaults.standard
+    private let storageKey = "ballparkdiary.state.v1"
+
+    init() {
+        load()
+    }
 
     /// Persisted choice of the user's home team. Used to pre-rotate the map
     /// and tint stats. Set during onboarding via `pickFavorite(_:)`.
     func pickFavorite(_ team: Team) {
         favoriteTeamId = team.id
         hasPickedFavorite = true
+        save()
     }
-
-    /// Attended games keyed by the inbox they were sourced from. The merged
-    /// diary (`games`) is the union of every value, sorted newest-first.
-    var gamesByInbox: [UUID: [AttendedGame]] = [:]
 
     // MARK: Derived state
 
@@ -88,18 +102,56 @@ final class DiaryStore {
         return best
     }
 
+    // MARK: Cool extras
+
+    /// Games attended on this calendar day in previous years ("On this day").
+    var onThisDayGames: [AttendedGame] {
+        let cal = Calendar(identifier: .gregorian)
+        let today = cal.dateComponents([.month, .day], from: .now)
+        return games.filter {
+            let c = cal.dateComponents([.month, .day], from: $0.date)
+            return c.month == today.month && c.day == today.day
+        }
+    }
+
+    /// The user's "lucky charm" — their win rate when rooting for their
+    /// favorite team across games they attended.
+    var luckyCharm: (wins: Int, losses: Int, team: Team)? {
+        let favorite = favoriteTeam
+        let relevant = games.filter { $0.homeTeamId == favorite.id || $0.awayTeamId == favorite.id }
+        guard !relevant.isEmpty else { return nil }
+        let wins = relevant.filter { g in
+            let favHome = g.homeTeamId == favorite.id
+            let favWon = favHome ? g.homeScore > g.awayScore : g.awayScore > g.homeScore
+            return favWon
+        }.count
+        return (wins, relevant.count - wins, favorite)
+    }
+
+    /// Ballparks the user has not yet visited, for the "30 Ballpark Quest".
+    var ballparksRemaining: [Ballpark] {
+        Ballpark.all.filter { !visitedBallparkIds.contains($0.id) }
+    }
+
     // MARK: Inbox management
 
     func isProviderConnected(_ provider: InboxProvider) -> Bool {
         connectedInboxes.contains(where: { $0.provider == provider })
     }
 
-    /// Begin connecting a new inbox and stream the mock scan. Safe to call
-    /// during onboarding (first inbox) or from inside the app (additional ones);
-    /// in both cases the scan animates against `scanPhase`.
+    /// Begin connecting a new inbox. Gmail uses the real Google Sign-In + Gmail
+    /// API pipeline when a client id is configured; everything else (and the
+    /// cloud-preview fallback) uses the demo scan.
     func connect(provider: InboxProvider, email: String? = nil) {
         guard pendingInbox == nil else { return }
         if provider != .other, isProviderConnected(provider) { return }
+        scanError = nil
+
+        if provider == .gmail, GmailService.shared.isConfigured {
+            startRealGmailScan()
+            return
+        }
+
         let resolvedEmail = email ?? "you@\(provider.domain)"
         let inbox = ConnectedInbox(
             id: UUID(),
@@ -122,14 +174,12 @@ final class DiaryStore {
     func disconnect(_ inbox: ConnectedInbox) {
         gamesByInbox.removeValue(forKey: inbox.id)
         connectedInboxes.removeAll { $0.id == inbox.id }
+        if inbox.provider == .gmail { GmailService.shared.signOut() }
+        save()
     }
 
     // MARK: Manual entries
 
-    /// Append a user-entered game (for ballparks visited before digital
-    /// ticketing existed, or any game not surfaced by an inbox scan). Manual
-    /// games are stored under a single synthetic "Manual entries" inbox so the
-    /// running totals always include them.
     func addManualGame(_ game: AttendedGame) {
         let inbox = ensureManualInbox()
         var existing = gamesByInbox[inbox.id] ?? []
@@ -141,9 +191,9 @@ final class DiaryStore {
         if !hasCompletedOnboarding {
             hasCompletedOnboarding = true
         }
+        save()
     }
 
-    /// Remove a single manually-entered game by id.
     func removeManualGame(_ id: UUID) {
         guard let inbox = connectedInboxes.first(where: { $0.provider == .manual }) else { return }
         var existing = gamesByInbox[inbox.id] ?? []
@@ -157,6 +207,7 @@ final class DiaryStore {
                 connectedInboxes[idx].ticketsFound = existing.count
             }
         }
+        save()
     }
 
     @discardableResult
@@ -174,6 +225,113 @@ final class DiaryStore {
         connectedInboxes.append(inbox)
         return inbox
     }
+
+    // MARK: - Real Gmail scan
+
+    private func startRealGmailScan() {
+        let placeholder = ConnectedInbox(
+            id: UUID(),
+            email: "Gmail",
+            provider: .gmail,
+            ticketsFound: 0,
+            connectedAt: .now
+        )
+        pendingInbox = placeholder
+        scanPhase = .connecting
+        foundEmails = []
+
+        Task { @MainActor in
+            do {
+                let account = try await GmailService.shared.signInAndAuthorize()
+                pendingInbox?.email = account.email
+
+                let messages = try await GmailService.shared.fetchTicketMessages(accessToken: account.accessToken)
+                let detected = TicketEmailParser.detect(in: messages)
+
+                if detected.isEmpty {
+                    scanPhase = .scanning(progress: 0.4, currentSubject: "No baseball tickets found yet")
+                    try? await Task.sleep(for: .milliseconds(700))
+                }
+
+                var built: [AttendedGame] = []
+                let existingKeys = Set(games.map(dayParkKey))
+                var batchKeys = Set<String>()
+                let total = max(detected.count, 1)
+
+                for (index, candidate) in detected.prefix(40).enumerated() {
+                    scanPhase = .scanning(
+                        progress: Double(index + 1) / Double(total),
+                        currentSubject: candidate.subject
+                    )
+                    foundEmails.append(candidate.subject)
+                    if let game = await buildGame(from: candidate) {
+                        let key = dayParkKey(game)
+                        if !existingKeys.contains(key), !batchKeys.contains(key) {
+                            batchKeys.insert(key)
+                            built.append(game)
+                        }
+                    }
+                }
+
+                scanPhase = .finishing
+                try? await Task.sleep(for: .milliseconds(600))
+
+                var saved = placeholder
+                saved.email = account.email
+                saved.ticketsFound = built.count
+                gamesByInbox[saved.id] = built
+                connectedInboxes.append(saved)
+                pendingInbox = nil
+                scanPhase = .finished
+                save()
+
+                try? await Task.sleep(for: .milliseconds(950))
+                hasCompletedOnboarding = true
+                scanPhase = .idle
+                save()
+            } catch {
+                pendingInbox = nil
+                scanPhase = .idle
+                scanError = (error as? GmailError)?.errorDescription ?? "Couldn't connect to Gmail. Please try again."
+            }
+        }
+    }
+
+    /// Resolve a detected ticket to a real, completed MLB game.
+    private func buildGame(from candidate: DetectedGame) async -> AttendedGame? {
+        for date in candidate.candidateDates.prefix(3) {
+            guard let results = try? await MLBStatsService.shared.games(on: date, teamMlbId: candidate.teamMlbId) else {
+                continue
+            }
+            let finals = results.filter { $0.isFinal }
+            let match: MLBGameResult?
+            if let opponent = candidate.opponentMlbId {
+                match = finals.first {
+                    ($0.homeMlbId == candidate.teamMlbId && $0.awayMlbId == opponent) ||
+                    ($0.awayMlbId == candidate.teamMlbId && $0.homeMlbId == opponent)
+                } ?? finals.first
+            } else {
+                match = finals.first
+            }
+            if let match {
+                return AttendedGame.from(
+                    result: match,
+                    source: candidate.source,
+                    emailSubject: candidate.subject,
+                    favoriteTeamId: favoriteTeamId
+                )
+            }
+        }
+        return nil
+    }
+
+    private func dayParkKey(_ game: AttendedGame) -> String {
+        let cal = Calendar(identifier: .gregorian)
+        let c = cal.dateComponents([.year, .month, .day], from: game.date)
+        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)-\(game.ballparkId)"
+    }
+
+    // MARK: - Demo scan (non-Gmail providers / preview fallback)
 
     @MainActor
     private func streamScan(for inbox: ConnectedInbox) async {
@@ -195,9 +353,50 @@ final class DiaryStore {
         connectedInboxes.append(saved)
         pendingInbox = nil
         scanPhase = .finished
+        save()
 
         try? await Task.sleep(for: .milliseconds(950))
         hasCompletedOnboarding = true
         scanPhase = .idle
+        save()
+    }
+
+    // MARK: - Persistence
+
+    private struct Snapshot: Codable {
+        var favoriteTeamId: String
+        var hasPickedFavorite: Bool
+        var hasCompletedOnboarding: Bool
+        var hasAcceptedTerms: Bool
+        var inboxes: [ConnectedInbox]
+        var gamesByInbox: [String: [AttendedGame]]
+    }
+
+    private func save() {
+        let snapshot = Snapshot(
+            favoriteTeamId: favoriteTeamId,
+            hasPickedFavorite: hasPickedFavorite,
+            hasCompletedOnboarding: hasCompletedOnboarding,
+            hasAcceptedTerms: hasAcceptedTerms,
+            inboxes: connectedInboxes,
+            gamesByInbox: Dictionary(uniqueKeysWithValues: gamesByInbox.map { ($0.key.uuidString, $0.value) })
+        )
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: storageKey)
+    }
+
+    private func load() {
+        guard
+            let data = defaults.data(forKey: storageKey),
+            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
+        else { return }
+        favoriteTeamId = snapshot.favoriteTeamId
+        hasPickedFavorite = snapshot.hasPickedFavorite
+        hasCompletedOnboarding = snapshot.hasCompletedOnboarding
+        hasAcceptedTerms = snapshot.hasAcceptedTerms
+        connectedInboxes = snapshot.inboxes
+        gamesByInbox = Dictionary(uniqueKeysWithValues: snapshot.gamesByInbox.compactMap { key, value in
+            UUID(uuidString: key).map { ($0, value) }
+        })
     }
 }
