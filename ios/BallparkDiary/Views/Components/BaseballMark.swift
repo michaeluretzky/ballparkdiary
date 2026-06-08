@@ -53,16 +53,16 @@ struct StitchArc: Shape {
         for i in 0..<stitches {
             let t = Double(i) / Double(stitches - 1)
             let angle = (startAngle + t * span) * .pi / 180
-            let mid = CGPoint(x: center.x + arcRadius * cos(angle),
-                              y: center.y + arcRadius * sin(angle))
+            let mid = CGPoint(x: center.x + arcRadius * CGFloat(cos(angle)),
+                              y: center.y + arcRadius * CGFloat(sin(angle)))
             // Stitch direction: perpendicular to radius, slight tilt
             let stitchLength = arcRadius * 0.30
             let perp = angle + .pi / 2
             // Skew the stitch to lean
             let lean: Double = (side == .right ? -0.45 : 0.45)
             let a = perp + lean
-            let dx = cos(a) * stitchLength * 0.5
-            let dy = sin(a) * stitchLength * 0.5
+            let dx = CGFloat(cos(a)) * stitchLength * 0.5
+            let dy = CGFloat(sin(a)) * stitchLength * 0.5
             p.move(to: CGPoint(x: mid.x - dx, y: mid.y - dy))
             p.addLine(to: CGPoint(x: mid.x + dx, y: mid.y + dy))
         }
