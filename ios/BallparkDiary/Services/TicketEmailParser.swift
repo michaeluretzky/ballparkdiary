@@ -11,12 +11,22 @@ nonisolated struct EmailMessage: Sendable, Hashable {
     let internalDate: Date
 }
 
-/// A candidate attended game detected from a ticket email. The date is a best
-/// guess from the email text (falling back to the received date); the team id
-/// is the MLB Stats API numeric id used to confirm the matchup against the
-/// real schedule. Isolation-free so it can run off the main actor.
+/// A possible game day pulled from a ticket. Month/day are always present; the
+/// year is only set when the ticket spells out a 4-digit year, otherwise it's
+/// resolved later by matching the real MLB schedule.
+nonisolated struct DateHint: Sendable, Hashable {
+    let month: Int
+    let day: Int
+    let year: Int?
+}
+
+/// A candidate attended game detected from a ticket. The team ids are MLB Stats
+/// API numeric ids used to confirm the matchup against the real schedule; the
+/// date hints narrow down which game. Crucially we never invent a date — if the
+/// ticket has no readable date, no game is emitted. Isolation-free so it can run
+/// off the main actor.
 nonisolated struct DetectedGame: Sendable, Hashable {
-    let candidateDates: [Date]
+    let dateHints: [DateHint]
     let teamMlbId: Int
     let opponentMlbId: Int?
     let source: String
@@ -36,14 +46,13 @@ nonisolated enum TicketEmailParser {
             let teams = matchedTeams(in: haystack)
             guard let primary = teams.first else { continue }
 
-            var dates = extractDates(from: haystack)
-            // Always include the received date as a fallback candidate.
-            dates.append(message.internalDate)
-            dates = dedupedByDay(dates)
+            // Only the date the ticket actually contains — never the share date.
+            let hints = extractDateHints(from: haystack)
+            guard !hints.isEmpty else { continue }
 
             detected.append(
                 DetectedGame(
-                    candidateDates: dates,
+                    dateHints: hints,
                     teamMlbId: primary,
                     opponentMlbId: teams.dropFirst().first,
                     source: source(from: message.from, subject: message.subject),
@@ -80,34 +89,58 @@ nonisolated enum TicketEmailParser {
 
     // MARK: - Date detection
 
-    private static func extractDates(from text: String) -> [Date] {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue) else {
-            return []
-        }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        let matches = detector.matches(in: text, options: [], range: range)
-        let now = Date()
-        // Tickets can be for past games (diary backfill) or upcoming games
-        // (future first pitch). Accept a wide window around now and let the MLB
-        // schedule confirmation pick the real game; reject only absurd outliers.
-        let earliest = now.addingTimeInterval(-60 * 60 * 24 * 365 * 30) // 30 yrs back
-        let latest = now.addingTimeInterval(60 * 60 * 24 * 400)          // ~13 mo ahead
-        return matches.compactMap { $0.date }.filter { $0 >= earliest && $0 <= latest }
-    }
+    /// Month abbreviations → month number. Long names match too since we only
+    /// look at the first three letters.
+    private static let monthNumbers: [String: Int] = [
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+    ]
 
-    private static func dedupedByDay(_ dates: [Date]) -> [Date] {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
-        var seen = Set<DateComponents>()
-        var result: [Date] = []
-        for date in dates {
-            let comps = cal.dateComponents([.year, .month, .day], from: date)
-            if !seen.contains(comps) {
-                seen.insert(comps)
-                result.append(date)
+    /// Pull every plausible game day out of the ticket text. Handles spelled-out
+    /// months ("Mon, Aug 22", "August 22, 2022") and numeric dates ("8/22/22",
+    /// "08-22-2022"). The year is captured only when explicit — otherwise it's
+    /// left nil so the MLB schedule confirmation resolves the correct season.
+    static func extractDateHints(from text: String) -> [DateHint] {
+        var hints: [DateHint] = []
+        var seen = Set<String>()
+        func push(month: Int, day: Int, year: Int?) {
+            guard (1...12).contains(month), (1...31).contains(day) else { return }
+            let normalizedYear: Int?
+            if let year { normalizedYear = year < 100 ? 2000 + year : year } else { normalizedYear = nil }
+            let key = "\(normalizedYear ?? 0)-\(month)-\(day)"
+            if seen.insert(key).inserted {
+                hints.append(DateHint(month: month, day: day, year: normalizedYear))
             }
         }
-        return result
+
+        // Spelled-out month + day (+ optional 4-digit year).
+        if let regex = try? NSRegularExpression(
+            pattern: "(?i)(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*,?\\s*(\\d{4}))?"
+        ) {
+            let ns = text as NSString
+            for m in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+                let monthWord = ns.substring(with: m.range(at: 1)).lowercased()
+                guard let month = monthNumbers[String(monthWord.prefix(3))] else { continue }
+                let day = Int(ns.substring(with: m.range(at: 2))) ?? 0
+                let year = m.range(at: 3).location != NSNotFound ? Int(ns.substring(with: m.range(at: 3))) : nil
+                push(month: month, day: day, year: year)
+            }
+        }
+
+        // Numeric M/D(/YY|/YYYY) or M-D(-YY|-YYYY).
+        if let regex = try? NSRegularExpression(
+            pattern: "\\b(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?\\b"
+        ) {
+            let ns = text as NSString
+            for m in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+                let month = Int(ns.substring(with: m.range(at: 1))) ?? 0
+                let day = Int(ns.substring(with: m.range(at: 2))) ?? 0
+                let year = m.range(at: 3).location != NSNotFound ? Int(ns.substring(with: m.range(at: 3))) : nil
+                push(month: month, day: day, year: year)
+            }
+        }
+
+        return hints
     }
 
     // MARK: - Source detection

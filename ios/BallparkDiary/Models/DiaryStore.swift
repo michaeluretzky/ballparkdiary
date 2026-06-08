@@ -291,25 +291,34 @@ final class DiaryStore {
         if didChange { save() }
     }
 
-    /// Resolve a detected ticket to a real MLB game — preferring a finished game
-    /// (with score) but accepting an upcoming/scheduled one when the game hasn't
-    /// been played yet.
+    /// Resolve a detected ticket to a real MLB game. Strictly verified: when both
+    /// teams are known we only accept a game where those exact two teams play
+    /// each other, and we never substitute a different game on a fallback date.
+    /// If the ticket's year is ambiguous we search the same month/day across
+    /// recent seasons — a specific matchup is rare enough that only the real year
+    /// confirms. Returns nil rather than inventing a wrong game.
     private func buildGame(from candidate: DetectedGame) async -> AttendedGame? {
-        for date in candidate.candidateDates.prefix(4) {
+        for date in confirmationDates(for: candidate) {
             guard
                 let results = try? await MLBStatsService.shared.games(on: date, teamMlbId: candidate.teamMlbId),
                 !results.isEmpty
             else { continue }
 
-            let matching = results.filter { result in
-                if let opponent = candidate.opponentMlbId {
-                    return (result.homeMlbId == candidate.teamMlbId && result.awayMlbId == opponent) ||
-                           (result.awayMlbId == candidate.teamMlbId && result.homeMlbId == opponent)
+            let match: MLBGameResult?
+            if let opponent = candidate.opponentMlbId {
+                // Require the exact matchup — home/away in either order.
+                match = results.first { result in
+                    (result.homeMlbId == candidate.teamMlbId && result.awayMlbId == opponent) ||
+                    (result.awayMlbId == candidate.teamMlbId && result.homeMlbId == opponent)
                 }
-                return result.homeMlbId == candidate.teamMlbId || result.awayMlbId == candidate.teamMlbId
+            } else {
+                // Only one team known: a team plays at most one opponent per day,
+                // so a single game on this exact date is unambiguous.
+                match = results.first { result in
+                    result.homeMlbId == candidate.teamMlbId || result.awayMlbId == candidate.teamMlbId
+                }
             }
-            let pool = matching.isEmpty ? results : matching
-            let match = pool.first(where: { $0.isFinal }) ?? pool.first
+
             if let match {
                 return AttendedGame.from(
                     result: match,
@@ -320,6 +329,43 @@ final class DiaryStore {
             }
         }
         return nil
+    }
+
+    /// Concrete dates to check against the schedule, derived from the ticket's
+    /// date hints. When the matchup is known (both teams) we expand an ambiguous
+    /// year across recent seasons so the real game resolves itself; with only one
+    /// team we stay close to the present to avoid picking the wrong season.
+    private func confirmationDates(for candidate: DetectedGame) -> [Date] {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        let thisYear = cal.component(.year, from: .now)
+        var dates: [Date] = []
+        var seen = Set<String>()
+
+        func add(year: Int, month: Int, day: Int) {
+            var comps = DateComponents()
+            comps.year = year; comps.month = month; comps.day = day; comps.hour = 12
+            guard let date = cal.date(from: comps) else { return }
+            let key = "\(year)-\(month)-\(day)"
+            if seen.insert(key).inserted { dates.append(date) }
+        }
+
+        for hint in candidate.dateHints {
+            if let year = hint.year {
+                add(year: year, month: hint.month, day: hint.day)
+            }
+            if candidate.opponentMlbId != nil {
+                // Matchup is rare — safe to scan many recent seasons (newest first).
+                for year in stride(from: thisYear, through: thisYear - 12, by: -1) {
+                    add(year: year, month: hint.month, day: hint.day)
+                }
+            } else if hint.year == nil {
+                // Single team, unknown year: best-effort guess at recent seasons.
+                add(year: thisYear, month: hint.month, day: hint.day)
+                add(year: thisYear - 1, month: hint.month, day: hint.day)
+            }
+        }
+        return dates
     }
 
     private func dayParkKey(_ game: AttendedGame) -> String {
