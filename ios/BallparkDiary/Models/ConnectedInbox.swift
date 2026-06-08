@@ -3,6 +3,7 @@ import SwiftUI
 
 /// The mail provider a user can connect to scan for ticket receipts.
 enum InboxProvider: String, CaseIterable, Hashable, Identifiable, Codable {
+    case forwarding
     case gmail
     case icloud
     case outlook
@@ -12,14 +13,17 @@ enum InboxProvider: String, CaseIterable, Hashable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    /// Providers shown in the connect/login UI. Manual is excluded — it has
-    /// its own dedicated CTA because it doesn't involve scanning an inbox.
+    /// Providers shown in the connect/login UI. `forwarding` and `manual` are
+    /// excluded — they have their own dedicated CTAs. Gmail is excluded because
+    /// mailbox OAuth requires Google's restricted-scope verification; auto-import
+    /// now happens via email forwarding instead.
     static var connectable: [InboxProvider] {
-        allCases.filter { $0 != .manual }
+        allCases.filter { $0 != .manual && $0 != .forwarding && $0 != .gmail }
     }
 
     var name: String {
         switch self {
+        case .forwarding: return "Forwarded tickets"
         case .gmail: return "Gmail"
         case .icloud: return "iCloud Mail"
         case .outlook: return "Outlook"
@@ -31,6 +35,7 @@ enum InboxProvider: String, CaseIterable, Hashable, Identifiable, Codable {
 
     var symbol: String {
         switch self {
+        case .forwarding: return "paperplane.fill"
         case .gmail: return "envelope.fill"
         case .icloud: return "icloud.fill"
         case .outlook: return "tray.fill"
@@ -42,6 +47,7 @@ enum InboxProvider: String, CaseIterable, Hashable, Identifiable, Codable {
 
     var brandColor: Color {
         switch self {
+        case .forwarding: return Color(hex: "#3FB57A")
         case .gmail: return Color(hex: "#EA4335")
         case .icloud: return Color(hex: "#3FA9F5")
         case .outlook: return Color(hex: "#0072C6")
@@ -53,6 +59,7 @@ enum InboxProvider: String, CaseIterable, Hashable, Identifiable, Codable {
 
     var domain: String {
         switch self {
+        case .forwarding: return "forwarding"
         case .gmail: return "gmail.com"
         case .icloud: return "icloud.com"
         case .outlook: return "outlook.com"
@@ -64,6 +71,7 @@ enum InboxProvider: String, CaseIterable, Hashable, Identifiable, Codable {
 
     var blurb: String {
         switch self {
+        case .forwarding: return "Auto-imported from emails you forward"
         case .other: return "Any IMAP provider · Fastmail, ProtonMail, work email"
         case .manual: return "For games older than digital tickets"
         default: return name

@@ -5,6 +5,11 @@
       "name": "Ballpark Diary",
       "path": "ios",
       "framework": "swift"
+    },
+    {
+      "name": "Functions",
+      "path": "functions",
+      "framework": "cloudflare"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Tab where the user manages every inbox feeding their diary. Shows the
 /// combined total at the top so it's obvious that tickets from all inboxes
@@ -23,6 +24,8 @@ struct InboxesView: View {
                 ScrollView {
                     VStack(spacing: 14) {
                         CombinedSummary()
+
+                        ForwardingCard()
 
                         if !storeKit.isPremium {
                             ProUpgradeBanner { showPaywall = true }
@@ -74,6 +77,8 @@ struct InboxesView: View {
             .navigationTitle("Inboxes")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .task { await store.refreshForwarding() }
+            .refreshable { await store.refreshForwarding() }
             .sheet(isPresented: $showAddSheet) {
                 AddInboxSheet()
             }
@@ -167,6 +172,90 @@ private struct MiniStat: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.cardElevated)
         )
+    }
+}
+
+// MARK: - Forwarding card
+
+/// Primary auto-import path: the user forwards ticket receipts to a personal
+/// address and we parse + confirm the game server-side. No mailbox access.
+private struct ForwardingCard: View {
+    @Environment(DiaryStore.self) private var store
+    @State private var didCopy: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(InboxProvider.forwarding.brandColor)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(InboxProvider.forwarding.brandColor.opacity(0.18)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-import by email")
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Forward any ticket receipt — we add the game")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+
+            if store.forwardingConfigured, let address = store.forwardingAddress {
+                Button {
+                    UIPasteboard.general.string = address
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+                    withAnimation(.snappy) { didCopy = true }
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        withAnimation(.snappy) { didCopy = false }
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Text(address)
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 8)
+                        Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(didCopy ? InboxProvider.forwarding.brandColor : Theme.clay)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Theme.cardElevated)
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Text(didCopy ? "Copied! Paste it as a forwarding address in your mail app."
+                     : "Tip: set this as an auto-forward filter for Ticketmaster, SeatGeek, StubHub & MLB emails.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.badge.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text("Your forwarding address is being set up — check back soon.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Theme.cardElevated)
+                )
+            }
+        }
+        .padding(16)
+        .nightCard()
     }
 }
 
@@ -296,7 +385,7 @@ private struct AddInboxCTA: View {
                     Text("Connect another inbox")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Add Gmail, iCloud, or Outlook")
+                    Text("Add iCloud, Outlook, or another email")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                 }

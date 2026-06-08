@@ -18,7 +18,7 @@ enum MockData {
         case .outlook: return outlookGames
         case .yahoo: return yahooGames
         case .other: return otherGames
-        case .manual: return []
+        case .forwarding, .manual: return []
         }
     }
 
@@ -29,7 +29,7 @@ enum MockData {
         case .outlook: return outlookSubjects
         case .yahoo: return yahooSubjects
         case .other: return otherSubjects
-        case .manual: return []
+        case .forwarding, .manual: return []
         }
     }
 

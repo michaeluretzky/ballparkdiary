@@ -25,6 +25,14 @@ final class DiaryStore {
     var hasCompletedOnboarding: Bool = false
     var scanPhase: ScanPhase = .idle
     var scanError: String? = nil
+
+    /// Personal forwarding token + resolved address for the TripIt-style
+    /// ticket-forwarding pipeline. The user forwards receipts to this address;
+    /// the backend parses them and we import confirmed games.
+    var forwardingToken: String = ""
+    var forwardingAddress: String? = nil
+    var forwardingConfigured: Bool = false
+    var isRefreshingForwarding: Bool = false
     var foundEmails: [String] = []                      // subjects revealed during current scan
     var connectedInboxes: [ConnectedInbox] = []         // successfully connected inboxes
     var pendingInbox: ConnectedInbox? = nil             // inbox currently being scanned
@@ -39,6 +47,17 @@ final class DiaryStore {
 
     init() {
         load()
+        if forwardingToken.isEmpty {
+            forwardingToken = Self.makeToken()
+            save()
+        }
+    }
+
+    /// A URL-safe, email-local-part-safe token (matches the backend's
+    /// `^[a-z0-9]{8,40}$` validation).
+    private static func makeToken() -> String {
+        let alphabet = Array("abcdefghijklmnopqrstuvwxyz0123456789")
+        return String((0..<16).map { _ in alphabet.randomElement() ?? "a" })
     }
 
     /// Persisted choice of the user's home team. Used to pre-rotate the map
@@ -147,11 +166,6 @@ final class DiaryStore {
         if provider != .other, isProviderConnected(provider) { return }
         scanError = nil
 
-        if provider == .gmail, GmailService.shared.isConfigured {
-            startRealGmailScan()
-            return
-        }
-
         let resolvedEmail = email ?? "you@\(provider.domain)"
         let inbox = ConnectedInbox(
             id: UUID(),
@@ -174,7 +188,6 @@ final class DiaryStore {
     func disconnect(_ inbox: ConnectedInbox) {
         gamesByInbox.removeValue(forKey: inbox.id)
         connectedInboxes.removeAll { $0.id == inbox.id }
-        if inbox.provider == .gmail { GmailService.shared.signOut() }
         save()
     }
 
@@ -226,79 +239,69 @@ final class DiaryStore {
         return inbox
     }
 
-    // MARK: - Real Gmail scan
+    // MARK: - Forwarded ticket import
 
-    private func startRealGmailScan() {
-        let placeholder = ConnectedInbox(
+    /// The email address users forward ticket receipts to, once the backend
+    /// inbound domain is configured.
+    var forwardingAddressDisplay: String {
+        forwardingAddress ?? "\(forwardingToken)@…"
+    }
+
+    @discardableResult
+    private func ensureForwardingInbox() -> ConnectedInbox {
+        if let existing = connectedInboxes.first(where: { $0.provider == .forwarding }) {
+            return existing
+        }
+        let inbox = ConnectedInbox(
             id: UUID(),
-            email: "Gmail",
-            provider: .gmail,
+            email: "Forwarded tickets",
+            provider: .forwarding,
             ticketsFound: 0,
             connectedAt: .now
         )
-        pendingInbox = placeholder
-        scanPhase = .connecting
-        foundEmails = []
+        connectedInboxes.append(inbox)
+        return inbox
+    }
 
-        Task { @MainActor in
-            do {
-                let account = try await GmailService.shared.signInAndAuthorize()
-                pendingInbox?.email = account.email
+    /// Resolve the forwarding address and import any newly-forwarded tickets,
+    /// confirming each against the real MLB schedule before adding it.
+    func refreshForwarding() async {
+        guard ForwardingService.shared.isBackendConfigured, !isRefreshingForwarding else { return }
+        isRefreshingForwarding = true
+        defer { isRefreshingForwarding = false }
 
-                let messages = try await GmailService.shared.fetchTicketMessages(accessToken: account.accessToken)
-                let detected = TicketEmailParser.detect(in: messages)
-
-                if detected.isEmpty {
-                    scanPhase = .scanning(progress: 0.4, currentSubject: "No baseball tickets found yet")
-                    try? await Task.sleep(for: .milliseconds(700))
-                }
-
-                var built: [AttendedGame] = []
-                let existingKeys = Set(games.map(dayParkKey))
-                var batchKeys = Set<String>()
-                let total = max(detected.count, 1)
-
-                for (index, candidate) in detected.prefix(40).enumerated() {
-                    scanPhase = .scanning(
-                        progress: Double(index + 1) / Double(total),
-                        currentSubject: candidate.subject
-                    )
-                    foundEmails.append(candidate.subject)
-                    if let game = await buildGame(from: candidate) {
-                        let key = dayParkKey(game)
-                        if !existingKeys.contains(key), !batchKeys.contains(key) {
-                            batchKeys.insert(key)
-                            built.append(game)
-                        }
-                    }
-                }
-
-                scanPhase = .finishing
-                try? await Task.sleep(for: .milliseconds(600))
-
-                var saved = placeholder
-                saved.email = account.email
-                saved.ticketsFound = built.count
-                gamesByInbox[saved.id] = built
-                connectedInboxes.append(saved)
-                pendingInbox = nil
-                scanPhase = .finished
-                save()
-
-                try? await Task.sleep(for: .milliseconds(950))
-                hasCompletedOnboarding = true
-                scanPhase = .idle
-                save()
-            } catch {
-                pendingInbox = nil
-                scanPhase = .idle
-                #if targetEnvironment(simulator)
-                scanError = "Google blocks sign-in inside the preview simulator for security. Gmail connection works normally once you install the app on your iPhone via TestFlight."
-                #else
-                scanError = (error as? GmailError)?.errorDescription ?? "Couldn't connect to Gmail. Please try again."
-                #endif
-            }
+        if let registration = try? await ForwardingService.shared.register(token: forwardingToken) {
+            forwardingConfigured = registration.configured
+            forwardingAddress = registration.address
         }
+
+        guard
+            let candidates = try? await ForwardingService.shared.pending(token: forwardingToken),
+            !candidates.isEmpty
+        else { return }
+
+        let inbox = ensureForwardingInbox()
+        var existing = gamesByInbox[inbox.id] ?? []
+        let existingKeys = Set(games.map(dayParkKey))
+        var batchKeys = Set<String>()
+        var processedIds: [String] = []
+
+        for candidate in candidates {
+            processedIds.append(candidate.id)
+            guard let game = await buildGame(from: candidate.detectedGame) else { continue }
+            let key = dayParkKey(game)
+            guard !existingKeys.contains(key), !batchKeys.contains(key) else { continue }
+            batchKeys.insert(key)
+            existing.append(game)
+        }
+
+        gamesByInbox[inbox.id] = existing.sorted { $0.date > $1.date }
+        if let idx = connectedInboxes.firstIndex(where: { $0.id == inbox.id }) {
+            connectedInboxes[idx].ticketsFound = existing.count
+        }
+        save()
+
+        await ForwardingService.shared.acknowledge(token: forwardingToken, ids: processedIds)
     }
 
     /// Resolve a detected ticket to a real, completed MLB game.
@@ -374,6 +377,7 @@ final class DiaryStore {
         var hasAcceptedTerms: Bool
         var inboxes: [ConnectedInbox]
         var gamesByInbox: [String: [AttendedGame]]
+        var forwardingToken: String?
     }
 
     private func save() {
@@ -383,7 +387,8 @@ final class DiaryStore {
             hasCompletedOnboarding: hasCompletedOnboarding,
             hasAcceptedTerms: hasAcceptedTerms,
             inboxes: connectedInboxes,
-            gamesByInbox: Dictionary(uniqueKeysWithValues: gamesByInbox.map { ($0.key.uuidString, $0.value) })
+            gamesByInbox: Dictionary(uniqueKeysWithValues: gamesByInbox.map { ($0.key.uuidString, $0.value) }),
+            forwardingToken: forwardingToken.isEmpty ? nil : forwardingToken
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: storageKey)
@@ -399,6 +404,7 @@ final class DiaryStore {
         hasCompletedOnboarding = snapshot.hasCompletedOnboarding
         hasAcceptedTerms = snapshot.hasAcceptedTerms
         connectedInboxes = snapshot.inboxes
+        forwardingToken = snapshot.forwardingToken ?? ""
         gamesByInbox = Dictionary(uniqueKeysWithValues: snapshot.gamesByInbox.compactMap { key, value in
             UUID(uuidString: key).map { ($0, value) }
         })
