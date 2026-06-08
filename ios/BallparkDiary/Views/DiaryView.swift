@@ -11,6 +11,10 @@ struct DiaryView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 18, pinnedViews: []) {
+                        // TEMP: visual verification that the NEW code is running
+                        BuildVerificationBanner()
+                            .padding(.horizontal, 16)
+
                         DiaryHeader()
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
@@ -76,6 +80,33 @@ struct DiaryView: View {
         return groups
             .sorted { $0.key > $1.key }
             .map { ("\($0.key) Season", $0.value.sorted { $0.date > $1.date }) }
+    }
+}
+
+// MARK: - Build verification banner (TEMPORARY)
+
+private struct BuildVerificationBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+            Text("NEW DESIGN ACTIVE — BUILD VERIFIED")
+                .font(.caps(10, weight: .heavy))
+                .tracking(1.5)
+                .foregroundStyle(.white)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Theme.grass.opacity(0.85))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
+        )
     }
 }
 
