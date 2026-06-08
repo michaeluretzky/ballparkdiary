@@ -14,6 +14,62 @@ nonisolated struct MLBGameResult: Sendable, Hashable {
     let isFinal: Bool
 }
 
+// MARK: - Rich game details (box score / live feed)
+
+/// Verified facts and notable plays pulled from a finished game's live feed.
+/// Everything here is real data from statsapi.mlb.com — attendance, duration,
+/// weather, the scoring plays, and the pitching lines used to surface
+/// milestones. Isolation-free so it decodes off the main actor; the UI model
+/// objects (highlights / milestones) are assembled on the main actor.
+nonisolated struct GameDetails: Sendable, Hashable {
+    let attendance: Int
+    let durationMinutes: Int
+    let tempF: Int
+    let weatherCondition: String
+    let dayNight: String
+    let homeMlbId: Int
+    let awayMlbId: Int
+    let scoringPlays: [ScoringPlay]
+    let homeRuns: [HomeRunPlay]
+    let pitching: [PitchingLine]
+}
+
+nonisolated struct ScoringPlay: Sendable, Hashable {
+    let inning: Int
+    let halfInning: String   // "top" / "bottom"
+    let event: String        // "Single", "Home Run", "Sacrifice Fly"
+    let description: String
+    let battingTeamMlbId: Int
+}
+
+nonisolated struct HomeRunPlay: Sendable, Hashable {
+    let inning: Int
+    let halfInning: String
+    let batter: String
+    let batterMlbId: Int
+    let battingTeamMlbId: Int
+    let rbi: Int
+    let seasonHomeRunNumber: Int?      // the "(14)" in the play description
+    let careerHomeRunTotal: Int?       // exact career total through this homer
+    let description: String
+}
+
+nonisolated struct PitchingLine: Sendable, Hashable {
+    let name: String
+    let teamMlbId: Int
+    let inningsPitched: String
+    let hits: Int
+    let runs: Int
+    let walks: Int
+    let strikeOuts: Int
+    let hitBatsmen: Int
+    let pitches: Int
+    let battersFaced: Int
+    let completeGames: Int
+    let shutouts: Int
+    let isWinner: Bool
+}
+
 /// Fetches real, completed game results from the free public MLB Stats API to
 /// enrich games detected in the user's inbox with the correct final score,
 /// matchup and venue.
@@ -62,6 +118,138 @@ nonisolated final class MLBStatsService: Sendable {
         }
     }
 
+    /// Fetch verified facts, scoring plays and pitching lines for a finished
+    /// game's live feed. Returns nil on any network/parse failure so callers can
+    /// fall back to the bare score. Home-run plays are annotated with the
+    /// batter's exact career home-run total at the time, enabling milestone
+    /// detection (e.g. "chasing 700").
+    func details(forGamePk gamePk: Int) async -> GameDetails? {
+        guard let url = URL(string: "https://statsapi.mlb.com/api/v1.1/game/\(gamePk)/feed/live") else {
+            return nil
+        }
+        guard
+            let (data, response) = try? await URLSession.shared.data(from: url),
+            (response as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) ?? true,
+            let feed = try? JSONDecoder().decode(LiveFeed.self, from: data)
+        else { return nil }
+
+        let homeId = feed.gameData.teams.home.id ?? 0
+        let awayId = feed.gameData.teams.away.id ?? 0
+        let info = feed.gameData.gameInfo
+        let weather = feed.gameData.weather
+
+        var scoringPlays: [ScoringPlay] = []
+        var homeRuns: [HomeRunPlay] = []
+        var careerCache: [Int: Int] = [:]   // batterId -> career HR before this season
+
+        let season = Calendar(identifier: .gregorian).component(
+            .year,
+            from: Self.gameDate(from: feed.gameData.datetime?.dateTime) ?? .now
+        )
+
+        for play in feed.liveData.plays.allPlays {
+            guard let result = play.result, let about = play.about else { continue }
+            let half = about.halfInning ?? "top"
+            let inning = about.inning ?? 0
+            let battingTeam = half == "bottom" ? homeId : awayId
+            let isScoring = (result.rbi ?? 0) > 0 || (result.eventType == "home_run")
+            let event = result.event ?? ""
+            let desc = result.description ?? ""
+
+            if isScoring, !desc.isEmpty {
+                scoringPlays.append(ScoringPlay(
+                    inning: inning, halfInning: half, event: event,
+                    description: desc, battingTeamMlbId: battingTeam
+                ))
+            }
+
+            if result.eventType == "home_run", let batter = play.matchup?.batter {
+                let seasonNumber = Self.parseSeasonHomeRun(from: desc)
+                var careerTotal: Int? = nil
+                if let batterId = batter.id, let seasonNumber {
+                    let before: Int
+                    if let cached = careerCache[batterId] {
+                        before = cached
+                    } else {
+                        before = await careerHomeRuns(playerId: batterId, beforeSeason: season)
+                        careerCache[batterId] = before
+                    }
+                    if before > 0 { careerTotal = before + seasonNumber }
+                }
+                homeRuns.append(HomeRunPlay(
+                    inning: inning, halfInning: half,
+                    batter: batter.fullName ?? "", batterMlbId: batter.id ?? 0,
+                    battingTeamMlbId: battingTeam, rbi: result.rbi ?? 1,
+                    seasonHomeRunNumber: seasonNumber, careerHomeRunTotal: careerTotal,
+                    description: desc
+                ))
+            }
+        }
+
+        var pitching: [PitchingLine] = []
+        let winnerId = feed.liveData.decisions?.winner?.id
+        for (side, teamMlbId) in [(feed.liveData.boxscore.teams.away, awayId), (feed.liveData.boxscore.teams.home, homeId)] {
+            for pid in side.pitchers {
+                guard let player = side.players["ID\(pid)"], let stat = player.stats?.pitching else { continue }
+                pitching.append(PitchingLine(
+                    name: player.person?.fullName ?? "",
+                    teamMlbId: teamMlbId,
+                    inningsPitched: stat.inningsPitched ?? "0",
+                    hits: stat.hits ?? 0, runs: stat.runs ?? 0,
+                    walks: stat.baseOnBalls ?? 0, strikeOuts: stat.strikeOuts ?? 0,
+                    hitBatsmen: stat.hitBatsmen ?? 0,
+                    pitches: stat.numberOfPitches ?? stat.pitchesThrown ?? 0,
+                    battersFaced: stat.battersFaced ?? 0,
+                    completeGames: stat.completeGames ?? 0,
+                    shutouts: stat.shutouts ?? 0,
+                    isWinner: winnerId != nil && pid == winnerId
+                ))
+            }
+        }
+
+        return GameDetails(
+            attendance: info?.attendance ?? 0,
+            durationMinutes: info?.gameDurationMinutes ?? 0,
+            tempF: Int(weather?.temp ?? "") ?? 0,
+            weatherCondition: weather?.condition ?? "",
+            dayNight: feed.gameData.datetime?.dayNight ?? "night",
+            homeMlbId: homeId, awayMlbId: awayId,
+            scoringPlays: scoringPlays, homeRuns: homeRuns, pitching: pitching
+        )
+    }
+
+    /// Sum a player's regular-season home runs across every season *before*
+    /// `season`, so adding the in-season home-run number gives the exact career
+    /// total at the moment of a homer. Combined multi-stint rows (no team id)
+    /// are skipped so traded-player seasons aren't double counted. Returns 0 if
+    /// the lookup fails.
+    private func careerHomeRuns(playerId: Int, beforeSeason season: Int) async -> Int {
+        guard
+            let url = URL(string: "https://statsapi.mlb.com/api/v1/people/\(playerId)/stats?stats=yearByYear&group=hitting"),
+            let (data, _) = try? await URLSession.shared.data(from: url),
+            let response = try? JSONDecoder().decode(YearByYearResponse.self, from: data),
+            let splits = response.stats.first?.splits
+        else { return 0 }
+        var total = 0
+        for split in splits {
+            guard split.sport?.id == 1, split.team?.id != nil else { continue }
+            guard let year = Int(split.season ?? ""), year < season else { continue }
+            total += split.stat?.homeRuns ?? 0
+        }
+        return total
+    }
+
+    /// Parse the season home-run number from a play description such as
+    /// "Albert Pujols homers (14) on a line drive...".
+    private static func parseSeasonHomeRun(from description: String) -> Int? {
+        guard
+            let regex = try? NSRegularExpression(pattern: "homers?\\s*\\((\\d+)\\)", options: .caseInsensitive),
+            let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)),
+            let range = Range(match.range(at: 1), in: description)
+        else { return nil }
+        return Int(description[range])
+    }
+
     // MARK: - Formatting
 
     private static let dateFormatter: DateFormatter = {
@@ -85,6 +273,81 @@ nonisolated final class MLBStatsService: Sendable {
     }
 
     // MARK: - Decodable DTOs
+
+    // Live feed DTOs
+    private struct LiveFeed: Decodable {
+        let gameData: GameDataBlock
+        let liveData: LiveDataBlock
+    }
+    private struct GameDataBlock: Decodable {
+        let teams: FeedTeams
+        let weather: WeatherBlock?
+        let gameInfo: GameInfoBlock?
+        let datetime: DateTimeBlock?
+    }
+    private struct FeedTeams: Decodable { let home: FeedTeam; let away: FeedTeam }
+    private struct FeedTeam: Decodable { let id: Int? }
+    private struct WeatherBlock: Decodable { let condition: String?; let temp: String?; let wind: String? }
+    private struct GameInfoBlock: Decodable { let attendance: Int?; let gameDurationMinutes: Int? }
+    private struct DateTimeBlock: Decodable { let dateTime: String?; let dayNight: String? }
+    private struct LiveDataBlock: Decodable {
+        let plays: PlaysBlock
+        let boxscore: BoxscoreBlock
+        let decisions: DecisionsBlock?
+    }
+    private struct DecisionsBlock: Decodable { let winner: PersonRef? }
+    private struct PersonRef: Decodable { let id: Int?; let fullName: String? }
+    private struct PlaysBlock: Decodable { let allPlays: [PlayBlock] }
+    private struct PlayBlock: Decodable {
+        let result: PlayResult?
+        let about: PlayAbout?
+        let matchup: PlayMatchup?
+    }
+    private struct PlayResult: Decodable {
+        let event: String?
+        let eventType: String?
+        let description: String?
+        let rbi: Int?
+    }
+    private struct PlayAbout: Decodable { let halfInning: String?; let inning: Int? }
+    private struct PlayMatchup: Decodable { let batter: PersonRef? }
+    private struct BoxscoreBlock: Decodable { let teams: BoxscoreTeams }
+    private struct BoxscoreTeams: Decodable { let home: BoxscoreSide; let away: BoxscoreSide }
+    private struct BoxscoreSide: Decodable {
+        let pitchers: [Int]
+        let players: [String: BoxscorePlayer]
+    }
+    private struct BoxscorePlayer: Decodable {
+        let person: PersonRef?
+        let stats: PlayerStats?
+    }
+    private struct PlayerStats: Decodable { let pitching: PitchingStat? }
+    private struct PitchingStat: Decodable {
+        let inningsPitched: String?
+        let hits: Int?
+        let runs: Int?
+        let baseOnBalls: Int?
+        let strikeOuts: Int?
+        let hitBatsmen: Int?
+        let numberOfPitches: Int?
+        let pitchesThrown: Int?
+        let battersFaced: Int?
+        let completeGames: Int?
+        let shutouts: Int?
+    }
+
+    // Year-by-year hitting DTOs (career HR accumulation)
+    private struct YearByYearResponse: Decodable { let stats: [StatGroup] }
+    private struct StatGroup: Decodable { let splits: [YearSplit] }
+    private struct YearSplit: Decodable {
+        let season: String?
+        let sport: SportRef?
+        let team: TeamRefHR?
+        let stat: HittingStat?
+    }
+    private struct SportRef: Decodable { let id: Int? }
+    private struct TeamRefHR: Decodable { let id: Int? }
+    private struct HittingStat: Decodable { let homeRuns: Int? }
 
     private struct ScheduleResponse: Decodable { let dates: [DateBlock] }
     private struct DateBlock: Decodable { let games: [Game] }

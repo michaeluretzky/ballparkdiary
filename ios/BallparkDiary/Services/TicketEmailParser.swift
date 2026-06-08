@@ -150,7 +150,7 @@ nonisolated enum TicketEmailParser {
         for (needle, label) in sourceLabels where blob.contains(needle) {
             return label
         }
-        return "Email receipt"
+        return "Shared ticket"
     }
 
     private static let sourceLabels: [(String, String)] = [

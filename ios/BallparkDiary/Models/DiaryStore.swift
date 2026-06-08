@@ -204,6 +204,7 @@ final class DiaryStore {
 
         let imported = await importSharedTickets()
         await refreshUpcomingScores()
+        await enrichExistingGames()
         return imported
     }
 
@@ -282,9 +283,43 @@ final class DiaryStore {
                     ($0.awayMlbId == teamMlbId && $0.homeMlbId == opponentMlbId)
                 } ?? results.first
                 if let match, match.isFinal {
-                    updated[index] = game.completed(homeScore: match.homeScore, awayScore: match.awayScore)
+                    let promoted = game.completed(homeScore: match.homeScore, awayScore: match.awayScore)
+                    if let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
+                        updated[index] = promoted.enriched(with: details)
+                    } else {
+                        updated[index] = promoted
+                    }
                     didChange = true
                 }
+            }
+            if updated != list { gamesByInbox[inboxId] = updated }
+        }
+        if didChange { save() }
+    }
+
+    /// Backfill verified facts, highlights and milestones for finished games that
+    /// were imported before enrichment existed (or whose detail fetch failed).
+    /// Runs on pull-to-refresh so older diary entries gain real box-score data.
+    private func enrichExistingGames() async {
+        var didChange = false
+        for (inboxId, list) in gamesByInbox {
+            var updated = list
+            for (index, game) in list.enumerated() where !game.isUpcoming && !game.isEnriched {
+                let teamMlbId = game.homeTeam.mlbId
+                let opponentMlbId = game.awayTeam.mlbId
+                guard teamMlbId > 0 else { continue }
+                guard let results = try? await MLBStatsService.shared.games(on: game.date, teamMlbId: teamMlbId) else {
+                    continue
+                }
+                let match = results.first {
+                    ($0.homeMlbId == teamMlbId && $0.awayMlbId == opponentMlbId) ||
+                    ($0.awayMlbId == teamMlbId && $0.homeMlbId == opponentMlbId)
+                }
+                guard let match, let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) else {
+                    continue
+                }
+                updated[index] = game.enriched(with: details)
+                didChange = true
             }
             if updated != list { gamesByInbox[inboxId] = updated }
         }
@@ -320,12 +355,17 @@ final class DiaryStore {
             }
 
             if let match {
-                return AttendedGame.from(
+                guard let base = AttendedGame.from(
                     result: match,
                     source: candidate.source,
                     emailSubject: candidate.subject,
                     favoriteTeamId: favoriteTeamId
-                )
+                ) else { return nil }
+                // Pull verified facts, scoring plays and milestones for finished games.
+                if !base.isUpcoming, let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
+                    return base.enriched(with: details)
+                }
+                return base
             }
         }
         return nil

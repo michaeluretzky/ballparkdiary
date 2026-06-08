@@ -57,6 +57,35 @@ struct AttendedGame: Identifiable, Hashable, Codable {
         )
     }
 
+    /// True once verified box-score facts have been merged in. Used to decide
+    /// whether a pull-to-refresh should re-fetch a game's details.
+    var isEnriched: Bool { durationMinutes > 0 || !highlights.isEmpty || !milestones.isEmpty }
+
+    /// Merge verified facts, scoring-play highlights and detected milestones from
+    /// the MLB live feed into this game. Only applies to finished games.
+    func enriched(with details: GameDetails) -> AttendedGame {
+        guard !isUpcoming else { return self }
+        let resolvedWeather = AttendedGame.weather(
+            condition: details.weatherCondition,
+            dayNight: details.dayNight,
+            roof: ballpark.roof
+        )
+        return AttendedGame(
+            id: id, date: date, ballparkId: ballparkId,
+            homeTeamId: homeTeamId, awayTeamId: awayTeamId,
+            homeScore: homeScore, awayScore: awayScore,
+            userRootedForHome: userRootedForHome,
+            section: section, row: row, seat: seat,
+            weather: resolvedWeather ?? weather,
+            firstPitchTempF: details.tempF > 0 ? details.tempF : firstPitchTempF,
+            attendance: details.attendance > 0 ? details.attendance : attendance,
+            durationMinutes: details.durationMinutes > 0 ? details.durationMinutes : durationMinutes,
+            highlights: AttendedGame.highlights(from: details),
+            milestones: AttendedGame.milestones(from: details),
+            emailSubject: emailSubject, source: source, status: .completed
+        )
+    }
+
     enum Status: String, Codable { case completed, upcoming }
 
     enum Weather: String, CaseIterable, Codable {
@@ -151,6 +180,142 @@ struct PlayerMilestone: Identifiable, Hashable, Codable {
             case .milestone: return "Milestone"
             }
         }
+    }
+}
+
+// MARK: - Deriving highlights & milestones from the live feed
+
+extension AttendedGame {
+    /// Famous career home-run totals worth flagging — round centuries plus the
+    /// historic marks fans chase (660 Mays, 700, 714 Ruth, 755 Aaron, 762 Bonds).
+    private static let famousHomeRunMarks: [Int] = [500, 600, 660, 700, 714, 755, 762, 800]
+
+    static func weather(condition: String, dayNight: String, roof: Ballpark.RoofType) -> Weather? {
+        if roof == .dome { return .dome }
+        let c = condition.lowercased()
+        if c.contains("roof closed") || c.contains("dome") { return .dome }
+        if c.contains("rain") || c.contains("drizzle") || c.contains("shower") { return .rain }
+        if c.contains("cloud") || c.contains("overcast") {
+            return c.contains("partly") ? .partlyCloudy : .cloudy
+        }
+        // Clear / sunny / fair
+        return dayNight.lowercased() == "day" ? .clear : .night
+    }
+
+    private static func inningLabel(half: String, inning: Int) -> String {
+        (half == "bottom" ? "B" : "T") + "\(inning)"
+    }
+
+    static func highlights(from details: GameDetails) -> [Highlight] {
+        var result: [Highlight] = []
+        for play in details.scoringPlays {
+            let isHR = play.event.lowercased().contains("home run")
+            result.append(Highlight(
+                inning: inningLabel(half: play.halfInning, inning: play.inning),
+                description: play.description,
+                kind: isHR ? .homeRun : .hit
+            ))
+        }
+        // Surface dominant pitching lines (complete games or 10+ strikeouts).
+        for line in details.pitching where line.completeGames >= 1 || line.strikeOuts >= 10 {
+            let summary = "\(line.name): \(line.inningsPitched) IP, \(line.hits) H, \(line.runs) R, \(line.strikeOuts) K on \(line.pitches) pitches"
+            result.append(Highlight(inning: "P", description: summary, kind: .pitching))
+        }
+        return result
+    }
+
+    static func milestones(from details: GameDetails) -> [PlayerMilestone] {
+        var result: [PlayerMilestone] = []
+
+        // Career home-run milestones (exact total verified against career logs).
+        for hr in details.homeRuns {
+            guard let total = hr.careerHomeRunTotal, total > 0 else { continue }
+            let teamId = Team.by(mlbId: hr.battingTeamMlbId)?.id ?? ""
+            let inning = inningLabel(half: hr.halfInning, inning: hr.inning)
+            let grandSlamNote = hr.rbi >= 4 ? " (grand slam)" : ""
+
+            if total % 100 == 0 || famousHomeRunMarks.contains(total) {
+                result.append(PlayerMilestone(
+                    id: UUID(), playerName: hr.batter, teamId: teamId,
+                    title: "\(ordinal(total)) Career Home Run",
+                    category: .homeRun, stat: "HR #\(total)",
+                    detail: hr.description + grandSlamNote,
+                    context: "You were in the stands for \(hr.batter)'s \(ordinal(total)) career home run — one of the rarest milestones in baseball.",
+                    inning: inning
+                ))
+            } else if let mark = famousHomeRunMarks.first(where: { $0 > total && $0 - total <= 10 }) {
+                let away = mark - total
+                result.append(PlayerMilestone(
+                    id: UUID(), playerName: hr.batter, teamId: teamId,
+                    title: "Career HR #\(total) — Chasing \(mark)",
+                    category: .homeRun, stat: "HR #\(total)",
+                    detail: hr.description + grandSlamNote,
+                    context: "\(hr.batter)'s \(ordinal(total)) career home run — now just \(away) away from the historic \(mark) club. You saw the chase live.",
+                    inning: inning
+                ))
+            }
+        }
+
+        // Pitching gems from complete games and high-strikeout outings.
+        for line in details.pitching {
+            let teamId = Team.by(mlbId: line.teamMlbId)?.id ?? ""
+            let isCompleteGame = line.completeGames >= 1
+            let isShutout = line.shutouts >= 1 || (isCompleteGame && line.runs == 0)
+
+            if isCompleteGame {
+                let noHitter = line.hits == 0
+                let perfect = noHitter && line.walks == 0 && line.hitBatsmen == 0
+                let maddux = isShutout && (1..<100).contains(line.pitches)
+
+                let title: String
+                let category: PlayerMilestone.Category
+                if perfect {
+                    title = "Perfect Game"; category = .noHitter
+                } else if noHitter {
+                    title = "No-Hitter"; category = .noHitter
+                } else if maddux {
+                    title = "Maddux — Sub-100-Pitch Shutout"; category = .milestone
+                } else if isShutout {
+                    title = "Complete-Game Shutout"; category = .milestone
+                } else {
+                    title = "\(line.hits)-Hit Complete Game"; category = .milestone
+                }
+
+                let pieces = "\(line.inningsPitched) IP, \(line.hits) H, \(line.runs) R, \(line.walks) BB, \(line.strikeOuts) K on \(line.pitches) pitches"
+                result.append(PlayerMilestone(
+                    id: UUID(), playerName: line.name, teamId: teamId,
+                    title: title, category: category,
+                    stat: pieces,
+                    detail: "\(line.name) went the distance: \(pieces).",
+                    context: maddux
+                        ? "A “Maddux” is a complete-game shutout on fewer than 100 pitches — one of the rarest, most efficient performances a pitcher can deliver. You watched it happen."
+                        : "A complete game is a vanishing art in modern baseball. You were there to see every out.",
+                    inning: nil
+                ))
+            } else if line.strikeOuts >= 15 {
+                result.append(PlayerMilestone(
+                    id: UUID(), playerName: line.name, teamId: teamId,
+                    title: "\(line.strikeOuts)-Strikeout Game",
+                    category: .strikeouts,
+                    stat: "\(line.strikeOuts) K in \(line.inningsPitched) IP",
+                    detail: "\(line.name) racked up \(line.strikeOuts) strikeouts.",
+                    context: "A 15-strikeout game is elite, dominant pitching. You saw it in person.",
+                    inning: nil
+                ))
+            }
+        }
+
+        return result
+    }
+
+    private static func ordinal(_ n: Int) -> String {
+        let suffix: String
+        let ones = n % 10, tens = (n / 10) % 10
+        if tens == 1 { suffix = "th" }
+        else {
+            switch ones { case 1: suffix = "st"; case 2: suffix = "nd"; case 3: suffix = "rd"; default: suffix = "th" }
+        }
+        return "\(n)\(suffix)"
     }
 }
 
