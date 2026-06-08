@@ -5,8 +5,15 @@ import SwiftUI
 /// are merged into a single set of statistics.
 struct InboxesView: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(StoreViewModel.self) private var storeKit
     @State private var showAddSheet: Bool = false
     @State private var showManualSheet: Bool = false
+    @State private var showPaywall: Bool = false
+
+    /// Inboxes that count toward the free 1-inbox limit (manual entries are free & unlimited).
+    private var connectedRealInboxes: Int {
+        store.connectedInboxes.filter { $0.provider != .manual }.count
+    }
 
     var body: some View {
         NavigationStack {
@@ -16,6 +23,10 @@ struct InboxesView: View {
                 ScrollView {
                     VStack(spacing: 14) {
                         CombinedSummary()
+
+                        if !storeKit.isPremium {
+                            ProUpgradeBanner { showPaywall = true }
+                        }
 
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Connected".uppercased())
@@ -33,7 +44,13 @@ struct InboxesView: View {
                             }
                         }
 
-                        AddInboxCTA { showAddSheet = true }
+                        AddInboxCTA {
+                            if storeKit.isPremium || connectedRealInboxes < 1 {
+                                showAddSheet = true
+                            } else {
+                                showPaywall = true
+                            }
+                        }
 
                         ManualEntryCTA(
                             manualCount: store.connectedInboxes.first(where: { $0.provider == .manual })?.ticketsFound ?? 0
@@ -62,6 +79,9 @@ struct InboxesView: View {
             }
             .sheet(isPresented: $showManualSheet) {
                 ManualGameEntryView()
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView(store: storeKit)
             }
         }
     }
@@ -215,6 +235,49 @@ private struct EmptyInboxesHint: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Theme.card.opacity(0.6))
         )
+    }
+}
+
+// MARK: - Pro Upgrade Banner
+
+private struct ProUpgradeBanner: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                    .frame(width: 46, height: 46)
+                    .background(Circle().fill(Theme.lights.opacity(0.16)))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Ballpark Diary Pro")
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Unlimited inboxes, Wrapped, share cards & more · $9.99/yr")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Theme.lights.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Theme.lights.opacity(0.45), lineWidth: 1.2)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
