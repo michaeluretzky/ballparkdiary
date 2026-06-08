@@ -292,7 +292,11 @@ final class DiaryStore {
             } catch {
                 pendingInbox = nil
                 scanPhase = .idle
+                #if targetEnvironment(simulator)
+                scanError = "Google blocks sign-in inside the preview simulator for security. Gmail connection works normally once you install the app on your iPhone via TestFlight."
+                #else
                 scanError = (error as? GmailError)?.errorDescription ?? "Couldn't connect to Gmail. Please try again."
+                #endif
             }
         }
     }
