@@ -63,7 +63,7 @@ struct InboxesView: View {
             .navigationTitle("Sources")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .refreshable { await store.refresh() }
+            .refreshable { await store.refresh(force: true) }
             .sheet(isPresented: $showManualSheet) {
                 ManualGameEntryView()
             }

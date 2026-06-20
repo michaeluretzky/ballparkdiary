@@ -103,7 +103,7 @@ struct DiaryView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
             .refreshable {
-                let count = await store.refresh()
+                let count = await store.refresh(force: true)
                 if count > 0 {
                     #if canImport(UIKit)
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()

@@ -77,6 +77,18 @@ nonisolated final class MLBStatsService: Sendable {
     static let shared = MLBStatsService()
     private init() {}
 
+    /// Dedicated session with tight timeouts so a slow or stalled MLB endpoint
+    /// can't hang a refresh. The default `URLSession.shared` waits up to 60s per
+    /// request, which — multiplied across the many lookups a refresh performs —
+    /// can leave the diary spinning for minutes on a flaky connection.
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config)
+    }()
+
     /// Returns completed regular/postseason games on `date`, optionally filtered
     /// to a single team. Dates use the league's calendar day.
     func games(on date: Date, teamMlbId: Int?) async throws -> [MLBGameResult] {
@@ -91,7 +103,7 @@ nonisolated final class MLBStatsService: Sendable {
         components.queryItems = items
         guard let url = components.url else { return [] }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await Self.session.data(from: url)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             return []
         }
@@ -128,7 +140,7 @@ nonisolated final class MLBStatsService: Sendable {
             return nil
         }
         guard
-            let (data, response) = try? await URLSession.shared.data(from: url),
+            let (data, response) = try? await Self.session.data(from: url),
             (response as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) ?? true,
             let feed = try? JSONDecoder().decode(LiveFeed.self, from: data)
         else { return nil }
@@ -226,7 +238,7 @@ nonisolated final class MLBStatsService: Sendable {
     private func careerHomeRuns(playerId: Int, beforeSeason season: Int) async -> Int {
         guard
             let url = URL(string: "https://statsapi.mlb.com/api/v1/people/\(playerId)/stats?stats=yearByYear&group=hitting"),
-            let (data, _) = try? await URLSession.shared.data(from: url),
+            let (data, _) = try? await Self.session.data(from: url),
             let response = try? JSONDecoder().decode(YearByYearResponse.self, from: data),
             let splits = response.stats.first?.splits
         else { return 0 }

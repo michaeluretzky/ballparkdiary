@@ -28,8 +28,10 @@ struct BallparkDiaryApp: App {
                 }
                 .onOpenURL { _ in
                     // Opened from share extension — refresh then switch to Diary tab.
+                    // Force past the throttle: the user just shared a ticket and
+                    // expects it to import right now.
                     Task {
-                        await store.refresh()
+                        await store.refresh(force: true)
                         store.requestedTab = "diary"
                     }
                 }

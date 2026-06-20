@@ -11,6 +11,7 @@ import Observation
 /// for the true final score (or kept as an upcoming game when it hasn't been
 /// played yet). No email access, no accounts, no servers.
 @Observable
+@MainActor
 final class DiaryStore {
     var hasPickedFavorite: Bool = false
     var hasAcceptedTerms: Bool = false
@@ -36,6 +37,13 @@ final class DiaryStore {
 
     /// Local retry tracking for shared ticket payloads (in-memory only).
     private var importAttempts: [String: (count: Int, firstSeen: Date)] = [:]
+
+    /// When the last full refresh completed. Used to throttle the refresh that
+    /// fires on every foreground / scene activation so we don't hammer the MLB
+    /// Stats API (each refresh can walk every game and issue many requests).
+    private var lastRefreshAt: Date?
+    /// Minimum gap between non-forced refreshes.
+    private static let refreshThrottle: TimeInterval = 60
 
     private let defaults = UserDefaults.standard
     private let storageKey = "ballparkdiary.state.v2"
@@ -245,11 +253,22 @@ final class DiaryStore {
     /// Import any newly-shared tickets and refresh upcoming games whose final
     /// score may now be available. Also re-verifies unverified manual games.
     /// Returns the number of newly imported games.
+    ///
+    /// Non-forced calls are throttled: foregrounding the app repeatedly (or the
+    /// scene re-activating) won't re-run the full network sweep more than once a
+    /// minute. Pass `force: true` for user-initiated pulls and the share-import
+    /// deep link, where an immediate refresh is expected.
     @discardableResult
-    func refresh() async -> Int {
+    func refresh(force: Bool = false) async -> Int {
         guard !isRefreshing else { return 0 }
+        if !force, let last = lastRefreshAt, Date.now.timeIntervalSince(last) < Self.refreshThrottle {
+            return 0
+        }
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            isRefreshing = false
+            lastRefreshAt = .now
+        }
 
         let imported = await importSharedTickets()
         await refreshUpcomingScores()

@@ -274,11 +274,16 @@ struct ShareView: View {
             ("nationals", "WSH"), ("washington", "WSH"),
         ]
         var found: [(idx: Int, abbr: String)] = []
+        let ns = lower as NSString
         for (needle, abbr) in keywords {
-            if let range = lower.range(of: needle), let r = lower.distance(from: lower.startIndex, to: range.lowerBound) as? Int ?? nil {
-                let idx = lower.distance(from: lower.startIndex, to: range.lowerBound)
-                found.append((idx, abbr))
-            }
+            // Word-boundary match so "helmets" doesn't hit "mets", "hundreds"
+            // doesn't hit "reds", etc. — mirrors the main parser's strictness.
+            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: needle))\\b"
+            guard
+                let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+                let match = regex.firstMatch(in: lower, range: NSRange(location: 0, length: ns.length))
+            else { continue }
+            found.append((match.range.location, abbr))
         }
         found.sort { $0.idx < $1.idx }
         let unique = found.reduce(into: [String]()) { acc, item in
