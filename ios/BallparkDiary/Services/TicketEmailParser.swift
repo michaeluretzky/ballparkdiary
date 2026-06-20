@@ -77,21 +77,27 @@ nonisolated enum TicketEmailParser {
     // MARK: - Team detection
 
     /// Ordered, de-duplicated MLB team ids mentioned in the text.
+    /// Uses strict word-boundary (`\b`) matching — no substring fallback — so
+    /// "hundreds" won't match Reds, "helmets" won't match Mets, etc.
     private static func matchedTeams(in text: String) -> [Int] {
-        let lower = " " + text.lowercased() + " "
-        var hits: [(range: Range<String.Index>, id: Int)] = []
+        let lower = text.lowercased()
+        var hits: [(index: Int, id: Int)] = []
+
+        // Build one pass per keyword so multi-word phrases ("red sox",
+        // "blue jays", "san diego", etc.) are matched as whole tokens.
+        let regexCache = NSRegularExpression.self
         for (keyword, id) in teamKeywords {
-            if let range = lower.range(of: " " + keyword + " ") {
-                hits.append((range, id))
-            } else if let range = lower.range(of: keyword) {
-                // Looser match for keywords that may abut punctuation.
-                hits.append((range, id))
-            }
+            let escaped = NSRegularExpression.escapedPattern(for: keyword)
+            let pattern = "\\b\(escaped)\\b"
+            guard let regex = try? regexCache.init(pattern: pattern, options: [.caseInsensitive]) else { continue }
+            guard let match = regex.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)) else { continue }
+            hits.append((match.range.location, id))
         }
-        let ordered = hits.sorted { $0.range.lowerBound < $1.range.lowerBound }
+
+        hits.sort { $0.index < $1.index }
         var seen = Set<Int>()
         var result: [Int] = []
-        for hit in ordered where !seen.contains(hit.id) {
+        for hit in hits where !seen.contains(hit.id) {
             seen.insert(hit.id)
             result.append(hit.id)
         }
@@ -116,11 +122,18 @@ nonisolated enum TicketEmailParser {
             let ns = text as NSString
             guard let m = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
             if m.range(at: group).location == NSNotFound { return nil }
-            return ns.substring(with: m.range(at: group)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw = ns.substring(with: m.range(at: group))
+            // Trim leading/trailing punctuation and whitespace
+            return raw.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         }
 
         // Section: "Section 123", "Sec 123", "Sect 123", "SEC 123"
-        let section = firstMatch(#"\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)"#) ?? ""
+        // Also area labels without "Section": FIELD BOX 42, GRANDSTAND 5, etc.
+        var section = firstMatch(#"\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)"#) ?? ""
+        if section.isEmpty {
+            section = firstMatch(#"\b(FIELD\s*BOX|GRANDSTAND|BLEACHERS?|PAVILION|TERRACE|RESERVE|CLUB\s*LEVEL|UPPER\s*LEVEL|LOWER\s*LEVEL|MEZZANINE|LOGE|UPPER\s*RESERVE)\s*[:-]?\s*(\S+)"#, group: 0) ?? ""
+            if !section.isEmpty { section = section.trimmingCharacters(in: .whitespaces) }
+        }
 
         // Row: "Row 4", "Row: 4", "ROW A"
         let row = firstMatch(#"\bRow\s*[:-]?\s*(\S+)"#) ?? ""
@@ -128,11 +141,38 @@ nonisolated enum TicketEmailParser {
         // Seat: "Seat 12", "Seat: 12", "Seats 11-12" — just grab the first number
         let seat = firstMatch(#"\bSeats?\s*[:-]?\s*(\S+)"#) ?? ""
 
-        // Confirmation: "Confirmation #ABC123", "Conf#: XYZ", "Order #12345",
-        // "Order Number: ABC-123", "Confirmation Number: 1234567"
-        let confirmation = firstMatch(#"\b(?:Conf(?:irmation)?|Order)\s*(?:#|No\.?|Number:?)?\s*[:-]?\s*([A-Za-z0-9][A-Za-z0-9-]{2,20})"#)
+        // Confirmation: must contain ≥1 digit, be 4–20 alphanumeric + dash,
+        // and NOT be a plain English word from the reject list.
+        let confirmation = validatedConfirmation(from: text)
 
         return SeatInfo(section: section, row: row, seat: seat, confirmation: confirmation)
+    }
+
+    /// Confirmation / order number extraction with validation:
+    /// - Must contain at least one digit
+    /// - 4–20 characters of [A-Za-z0-9-]
+    /// - Reject plain English words (Total, Summary, Date, Details, etc.)
+    private static func validatedConfirmation(from text: String) -> String? {
+        let pattern = #"\b(?:Conf(?:irmation)?|Order)\s*(?:#|No\.?|Number:?)?\s*[:-]?\s*([A-Za-z0-9][A-Za-z0-9-]{3,19})\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let ns = text as NSString
+        guard let m = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
+
+        var raw = ns.substring(with: m.range(at: 1))
+        raw = raw.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+
+        // Must contain at least one digit
+        guard raw.rangeOfCharacter(from: .decimalDigits) != nil else { return nil }
+
+        // Reject plain English words that appear in ticket headers
+        let rejected: Set<String> = [
+            "total", "summary", "date", "details", "confirmation", "status", "number",
+            "order", "ticket", "event", "section", "row", "seat", "price", "subtotal",
+            "tax", "fee", "delivery", "payment", "receipt", "amount", "charge"
+        ]
+        guard !rejected.contains(raw.lowercased()) else { return nil }
+
+        return raw
     }
 
     // MARK: - Date detection
@@ -144,20 +184,45 @@ nonisolated enum TicketEmailParser {
         "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
     ]
 
+    /// Days in each month (non-leap). Used to validate bare numeric M/D.
+    private static let daysInMonth: [Int] = [
+        0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    ]
+
     /// Pull every plausible game day out of the ticket text. Handles spelled-out
     /// months ("Mon, Aug 22", "August 22, 2022") and numeric dates ("8/22/22",
     /// "08-22-2022"). The year is captured only when explicit — otherwise it's
     /// left nil so the MLB schedule confirmation resolves the correct season.
-    static func extractDateHints(from text: String) -> [DateHint] {
-        var hints: [DateHint] = []
+    ///
+    /// Seat-range patterns ("Seats 11-12", "Row 1-4", "Section 5-6") are stripped
+    /// before date extraction so they aren't mistaken for M-D dates.
+    /// Bare numeric M/D is only accepted when both numbers form a valid
+    /// calendar date AND no better-qualified date (with explicit year or
+    /// spelled-out month) exists.
+    static func extractDateHints(from rawText: String) -> [DateHint] {
+        // Strip seat/section/row ranges so "Seats 11-12" isn't parsed as Nov 12.
+        let seatStripper = try? NSRegularExpression(
+            pattern: #"(?:Section|Sec|Sect|Row|Seats?|Seat)\s*[:-]?\s*\d+\s*[-/]\s*\d+"#,
+            options: [.caseInsensitive]
+        )
+        let text = seatStripper?.stringByReplacingMatches(
+            in: rawText,
+            range: NSRange(rawText.startIndex..., in: rawText),
+            withTemplate: ""
+        ) ?? rawText
+
+        var hinted: [(month: Int, day: Int, year: Int?, isExplicitYear: Bool)] = []
         var seen = Set<String>()
-        func push(month: Int, day: Int, year: Int?) {
+
+        func push(month: Int, day: Int, year: Int?, isExplicitYear: Bool) {
             guard (1...12).contains(month), (1...31).contains(day) else { return }
+            // Validate calendar date
+            guard day <= daysInMonth[month] else { return }
             let normalizedYear: Int?
             if let year { normalizedYear = year < 100 ? 2000 + year : year } else { normalizedYear = nil }
             let key = "\(normalizedYear ?? 0)-\(month)-\(day)"
             if seen.insert(key).inserted {
-                hints.append(DateHint(month: month, day: day, year: normalizedYear))
+                hinted.append((month, day, normalizedYear, isExplicitYear))
             }
         }
 
@@ -171,11 +236,11 @@ nonisolated enum TicketEmailParser {
                 guard let month = monthNumbers[String(monthWord.prefix(3))] else { continue }
                 let day = Int(ns.substring(with: m.range(at: 2))) ?? 0
                 let year = m.range(at: 3).location != NSNotFound ? Int(ns.substring(with: m.range(at: 3))) : nil
-                push(month: month, day: day, year: year)
+                push(month: month, day: day, year: year, isExplicitYear: year != nil)
             }
         }
 
-        // Numeric M/D(/YY|/YYYY) or M-D(-YY|-YYYY).
+        // Numeric M/D(/YY|/YYYY) or M-D(-YY|-YYYY) — with calendar validation.
         if let regex = try? NSRegularExpression(
             pattern: "\\b(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?\\b"
         ) {
@@ -184,8 +249,26 @@ nonisolated enum TicketEmailParser {
                 let month = Int(ns.substring(with: m.range(at: 1))) ?? 0
                 let day = Int(ns.substring(with: m.range(at: 2))) ?? 0
                 let year = m.range(at: 3).location != NSNotFound ? Int(ns.substring(with: m.range(at: 3))) : nil
-                push(month: month, day: day, year: year)
+                push(month: month, day: day, year: year, isExplicitYear: year != nil)
             }
+        }
+
+        // Prefer dates with explicit 4-digit year or spelled-out month.
+        // Fall back to bare numeric M/D only when no better-qualified date exists.
+        let hasQualified = hinted.contains(where: { $0.isExplicitYear })
+        var hints: [DateHint] = []
+        for h in hinted {
+            // If we have any year-qualified date, skip bare numeric without a year
+            // (unless it also has a spelled-out month which counts as qualified).
+            if !h.isExplicitYear, hasQualified, h.year == nil {
+                continue
+            }
+            hints.append(DateHint(month: h.month, day: h.day, year: h.year))
+        }
+
+        // If filtering removed everything, fall back to all valid hints.
+        if hints.isEmpty {
+            hints = hinted.map { DateHint(month: $0.month, day: $0.day, year: $0.year) }
         }
 
         return hints

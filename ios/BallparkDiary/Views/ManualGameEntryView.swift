@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Manual game entry form for ballparks visited before digital ticketing,
 /// stub-and-paper ticket games, or anything not surfaced by an inbox scan.
-/// Saved games are merged into the same diary as scanned ones and update all
-/// totals immediately.
+/// Now verifies against the real MLB box score — the user picks a matchup
+/// and date, and we confirm it against the live schedule before saving.
 struct ManualGameEntryView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -22,13 +22,24 @@ struct ManualGameEntryView: View {
     @State private var notes: String = ""
     @FocusState private var focusedField: Field?
 
+    // Verification state
+    @State private var verifyState: VerifyState = .idle
+    @State private var verifyMessage: String = ""
+
     enum Field: Hashable { case section, row, seat, notes }
+    enum VerifyState {
+        case idle
+        case verifying
+        case verified(game: AttendedGame, notice: String?)
+        case notFound
+        case savedUnverified
+    }
 
     private var ballpark: Ballpark { Ballpark.by(id: ballparkId) ?? Ballpark.all[0] }
     private var resolvedHomeTeamId: String {
         homeTeamId.isEmpty ? ballpark.team.id : homeTeamId
     }
-    private var canSave: Bool { resolvedHomeTeamId != awayTeamId }
+    private var canVerify: Bool { resolvedHomeTeamId != awayTeamId }
 
     var body: some View {
         NavigationStack {
@@ -50,7 +61,7 @@ struct ManualGameEntryView: View {
                                 displayedComponents: .date
                             )
                             .datePickerStyle(.compact)
-                            .tint(Theme.clay)
+                            .tint(Team.by(id: resolvedHomeTeamId)?.primary ?? Theme.clay)
                             .foregroundStyle(Theme.textPrimary)
                         }
 
@@ -72,7 +83,7 @@ struct ManualGameEntryView: View {
                                     )
                                 )
                                 TeamRow(label: "Away", selection: $awayTeamId)
-                                if !canSave {
+                                if !canVerify {
                                     Text("Home and away can't be the same team.")
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundStyle(Theme.foul)
@@ -81,60 +92,64 @@ struct ManualGameEntryView: View {
                             }
                         }
 
-                        FormCard(title: "Final score") {
-                            HStack(spacing: 12) {
-                                ScoreStepper(
-                                    label: Team.by(id: awayTeamId)?.abbreviation ?? "AWAY",
-                                    accent: Team.by(id: awayTeamId)?.primary ?? Theme.clay,
-                                    value: $awayScore
-                                )
-                                ScoreStepper(
-                                    label: Team.by(id: resolvedHomeTeamId)?.abbreviation ?? "HOME",
-                                    accent: Team.by(id: resolvedHomeTeamId)?.primary ?? Theme.clay,
-                                    value: $homeScore
-                                )
+                        if case .idle = verifyState {
+                            FormCard(title: "Your best guess at the score") {
+                                HStack(spacing: 12) {
+                                    ScoreStepper(
+                                        label: Team.by(id: awayTeamId)?.abbreviation ?? "AWAY",
+                                        accent: Team.by(id: awayTeamId)?.primary ?? Theme.clay,
+                                        value: $awayScore
+                                    )
+                                    ScoreStepper(
+                                        label: Team.by(id: resolvedHomeTeamId)?.abbreviation ?? "HOME",
+                                        accent: Team.by(id: resolvedHomeTeamId)?.primary ?? Theme.clay,
+                                        value: $homeScore
+                                    )
+                                }
                             }
-                        }
 
-                        FormCard(title: "You rooted for") {
-                            Picker("Rooted for", selection: $userRootedForHome) {
-                                Text(Team.by(id: resolvedHomeTeamId)?.abbreviation ?? "Home").tag(true)
-                                Text(Team.by(id: awayTeamId)?.abbreviation ?? "Away").tag(false)
+                            FormCard(title: "You rooted for") {
+                                Picker("Rooted for", selection: $userRootedForHome) {
+                                    Text(Team.by(id: resolvedHomeTeamId)?.abbreviation ?? "Home").tag(true)
+                                    Text(Team.by(id: awayTeamId)?.abbreviation ?? "Away").tag(false)
+                                }
+                                .pickerStyle(.segmented)
                             }
-                            .pickerStyle(.segmented)
-                        }
 
-                        FormCard(title: "Seat (optional)") {
-                            VStack(spacing: 8) {
-                                HStack(spacing: 8) {
-                                    LabeledInput(label: "Section", text: $section)
-                                        .focused($focusedField, equals: .section)
-                                    LabeledInput(label: "Row", text: $row)
-                                        .focused($focusedField, equals: .row)
-                                    LabeledInput(label: "Seat", text: $seat)
-                                        .focused($focusedField, equals: .seat)
+                            FormCard(title: "Seat (optional)") {
+                                VStack(spacing: 8) {
+                                    HStack(spacing: 8) {
+                                        LabeledInput(label: "Section", text: $section)
+                                            .focused($focusedField, equals: .section)
+                                        LabeledInput(label: "Row", text: $row)
+                                            .focused($focusedField, equals: .row)
+                                        LabeledInput(label: "Seat", text: $seat)
+                                            .focused($focusedField, equals: .seat)
+                                    }
                                 }
                             }
                         }
 
-                        FormCard(title: "Weather") {
-                            Picker("Weather", selection: $weather) {
-                                ForEach(AttendedGame.Weather.allCases, id: \.self) { w in
-                                    Label(w.rawValue, systemImage: w.symbol).tag(w)
+                        // Verification result
+                        Group {
+                            switch verifyState {
+                            case .verified(_, let notice):
+                                VerifiedNotice(message: notice)
+                            case .notFound:
+                                NotFoundNotice(date: date, home: resolvedHomeTeamId, away: awayTeamId) {
+                                    verifyState = .idle
+                                } saveAnyway: {
+                                    saveUnverified()
                                 }
+                            case .savedUnverified:
+                                SavedUnverifiedNotice()
+                            case .verifying:
+                                VerifyingNotice()
+                            case .idle:
+                                EmptyView()
                             }
-                            .pickerStyle(.menu)
-                            .tint(Theme.clay)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-
-                        FormCard(title: "Memory (optional)") {
-                            TextField("What do you remember from this game?",
-                                      text: $notes, axis: .vertical)
-                                .lineLimit(3...5)
-                                .focused($focusedField, equals: .notes)
-                                .foregroundStyle(Theme.textPrimary)
-                        }
+                        .padding(.horizontal, 16)
 
                         Color.clear.frame(height: 40)
                     }
@@ -150,10 +165,19 @@ struct ManualGameEntryView: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", action: save)
-                        .fontWeight(.heavy)
-                        .foregroundStyle(canSave ? Theme.clay : Theme.textMuted)
-                        .disabled(!canSave)
+                    switch verifyState {
+                    case .verifying:
+                        ProgressView().tint(Theme.lights)
+                    case .verified(let game, _):
+                        Button("Save", action: { saveVerified(game) })
+                            .fontWeight(.heavy)
+                            .foregroundStyle(Theme.grass)
+                    default:
+                        Button("Verify & Save", action: verifyAndSave)
+                            .fontWeight(.heavy)
+                            .foregroundStyle(canVerify ? Theme.lights : Theme.textMuted)
+                            .disabled(!canVerify)
+                    }
                 }
                 ToolbarItem(placement: .keyboard) {
                     HStack {
@@ -166,13 +190,101 @@ struct ManualGameEntryView: View {
         }
     }
 
-    private func save() {
-        guard canSave else { return }
-        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let highlights: [AttendedGame.Highlight] = trimmedNotes.isEmpty ? [] : [
-            .init(inning: "—", description: trimmedNotes, kind: .hit)
-        ]
-        let game = AttendedGame(
+    // MARK: - Actions
+
+    private func verifyAndSave() {
+        guard canVerify else { return }
+        verifyState = .verifying
+
+        let homeMlbId = Team.by(id: resolvedHomeTeamId)?.mlbId ?? 0
+        let awayMlbId = Team.by(id: awayTeamId)?.mlbId ?? 0
+        guard homeMlbId > 0, awayMlbId > 0 else {
+            verifyState = .notFound
+            verifyMessage = "Couldn't resolve team IDs."
+            return
+        }
+
+        Task { @MainActor in
+            let found: Bool
+            if let results = try? await MLBStatsService.shared.games(on: date, teamMlbId: homeMlbId) {
+                let match = results.first { result in
+                    (result.homeMlbId == homeMlbId && result.awayMlbId == awayMlbId) ||
+                    (result.awayMlbId == homeMlbId && result.homeMlbId == awayMlbId)
+                }
+                if let match {
+                    // Found the real game — build with verified data.
+                    guard let baseGame = AttendedGame.from(
+                        result: match,
+                        source: "Manual entry (verified)",
+                        emailSubject: "Manual entry · \(ballpark.name)",
+                        favoriteTeamId: store.favoriteTeamId,
+                        section: section.isEmpty ? "—" : section,
+                        row: row.isEmpty ? "—" : row,
+                        seat: seat.isEmpty ? "—" : seat,
+                        confirmation: nil
+                    ) else {
+                        verifyState = .notFound
+                        verifyMessage = "Couldn't resolve the ballpark for this game."
+                        return
+                    }
+
+                    let enrichedGame: AttendedGame
+                    if !baseGame.isUpcoming, let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
+                        enrichedGame = baseGame.enriched(with: details)
+                    } else {
+                        enrichedGame = baseGame
+                    }
+
+                    // Check for score discrepancy
+                    let notice: String?
+                    let userEnteredScore = homeScore > 0 || awayScore > 0
+                    let realScoreDiffers = userEnteredScore && (homeScore != enrichedGame.homeScore || awayScore != enrichedGame.awayScore)
+                    if realScoreDiffers {
+                        notice = "Final was \(enrichedGame.awayScore)–\(enrichedGame.homeScore) — updated to match the official box score"
+                    } else {
+                        notice = nil
+                    }
+
+                    withAnimation(.snappy) {
+                        verifyState = .verified(game: enrichedGame, notice: notice)
+                    }
+                    found = true
+                } else {
+                    found = false
+                }
+            } else {
+                // Offline — save unverified, auto re-verify later.
+                withAnimation(.snappy) {
+                    saveUnverified()
+                }
+                return
+            }
+
+            if !found {
+                withAnimation(.snappy) {
+                    verifyState = .notFound
+                    verifyMessage = "We couldn't find that matchup on that date."
+                }
+            }
+        }
+    }
+
+    private func saveUnverified() {
+        let game = makeGame(isVerified: false, status: .completed)
+        if store.addManualGame(game) != nil {
+            verifyState = .savedUnverified
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dismiss() }
+        }
+    }
+
+    private func saveVerified(_ game: AttendedGame) {
+        if store.addManualGame(game) != nil {
+            dismiss()
+        }
+    }
+
+    private func makeGame(isVerified: Bool, status: AttendedGame.Status) -> AttendedGame {
+        AttendedGame(
             id: UUID(),
             date: date,
             ballparkId: ballparkId,
@@ -186,17 +298,128 @@ struct ManualGameEntryView: View {
             seat: seat.isEmpty ? "—" : seat,
             confirmation: nil,
             weather: weather,
-            firstPitchTempF: 72,
-            attendance: ballpark.capacity,
-            durationMinutes: 180,
-            highlights: highlights,
+            firstPitchTempF: isVerified ? 72 : 72,
+            attendance: isVerified ? ballpark.capacity : ballpark.capacity,
+            durationMinutes: isVerified ? 180 : 180,
+            highlights: [],
             milestones: [],
             emailSubject: "Manual entry · \(ballpark.name)",
-            source: "Manual entry",
-            status: .completed
+            source: isVerified ? "Manual entry (verified)" : "Manual entry (unverified)",
+            status: status,
+            isVerified: isVerified
         )
-        store.addManualGame(game)
-        dismiss()
+    }
+}
+
+// MARK: - Verification UI
+
+private struct VerifyingNotice: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView().tint(Theme.lights)
+            Text("Checking the official box score…")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer()
+        }
+        .padding(14)
+        .nightCard()
+    }
+}
+
+private struct VerifiedNotice: View {
+    let message: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.grass)
+                Text("Verified — official box score matched")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.grass)
+                Spacer()
+            }
+            if let message {
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .padding(14)
+        .nightCard()
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Theme.grass.opacity(0.3), lineWidth: 1)
+        )
+    }
+}
+
+private struct NotFoundNotice: View {
+    let date: Date
+    let home: String
+    let away: String
+    let retry: () -> Void
+    let saveAnyway: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("Couldn't confirm this matchup")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.lights)
+                Spacer()
+            }
+            Text("We couldn't find a game between \(Team.by(id: home)?.fullName ?? home) and \(Team.by(id: away)?.fullName ?? away) on \(date.formatted(date: .abbreviated, time: .omitted)).")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Button(action: retry) {
+                    Text("Adjust & retry")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.lights)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().strokeBorder(Theme.lights.opacity(0.5), lineWidth: 1)
+                        )
+                }
+                Button(action: saveAnyway) {
+                    Text("Save anyway")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule().strokeBorder(Theme.textMuted.opacity(0.4), lineWidth: 1)
+                        )
+                }
+            }
+        }
+        .padding(14)
+        .nightCard()
+    }
+}
+
+private struct SavedUnverifiedNotice: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Theme.lights)
+            Text("Saved — we'll verify it on the next refresh.")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer()
+        }
+        .padding(14)
+        .nightCard()
     }
 }
 
@@ -216,7 +439,7 @@ private struct Header: View {
                 .tracking(4)
                 .foregroundStyle(Theme.clay)
 
-            Text("For games older than digital tickets, paper stubs, or any game we missed.")
+            Text("We'll verify against the real box score after you hit Verify & Save.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)

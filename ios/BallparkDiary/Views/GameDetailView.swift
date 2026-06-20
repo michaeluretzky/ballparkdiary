@@ -4,8 +4,10 @@ import UIKit
 /// Detail screen for a single game: scoreboard, ticket stub with confirmation,
 /// ballpark aerial, seat perspective, milestones, highlights, and game facts.
 struct GameDetailView: View {
+    @Environment(DiaryStore.self) private var store
     let game: AttendedGame
     @State private var shareImage: Image? = nil
+    @State private var showDeleteConfirm: Bool = false
 
     var body: some View {
         ScrollView {
@@ -14,7 +16,7 @@ struct GameDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 6)
 
-                TicketStub(game: game)
+                TicketStubReal(game: game)
                     .padding(.horizontal, 16)
 
                 BallparkPanel(game: game)
@@ -35,29 +37,48 @@ struct GameDetailView: View {
                         .padding(.horizontal, 16)
                 }
 
-                SourceEmailRow(game: game)
+                SourceRow(game: game)
                     .padding(.horizontal, 16)
 
                 Color.clear.frame(height: 30)
             }
             .padding(.top, 8)
         }
-        .background(Theme.nightGradient.ignoresSafeArea())
+        .background {
+            Theme.nightGradient.ignoresSafeArea()
+            Theme.nightVignette.ignoresSafeArea()
+        }
         .navigationTitle(game.ballpark.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarBackground(Theme.nightDeep, for: .navigationBar)
+        .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if let shareImage {
-                    ShareLink(
-                        item: shareImage,
-                        preview: SharePreview("\(game.awayTeam.abbreviation) @ \(game.homeTeam.abbreviation)", image: shareImage)
-                    ) {
-                        Image(systemName: "square.and.arrow.up")
+                HStack(spacing: 16) {
+                    if let shareImage {
+                        ShareLink(
+                            item: shareImage,
+                            preview: SharePreview("\(game.awayTeam.abbreviation) @ \(game.homeTeam.abbreviation)", image: shareImage)
+                        ) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                    Button {
+                        showDeleteConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(Theme.foul.opacity(0.8))
                     }
                 }
             }
+        }
+        .confirmationDialog("Remove this game from your diary?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                store.deleteGame(game.id)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This won't affect the original ticket or email.")
         }
         .task { renderShareCard() }
     }
@@ -84,7 +105,7 @@ private struct ShareableGameCard: View {
                 .tracking(6)
                 .foregroundStyle(Theme.clay)
 
-            Text(game.date.formatted(date: .abbreviated, time: .omitted).uppercased())
+            Text(game.date.formatted(date: .abbreviated, time: .omitted))
                 .font(.caps(11, weight: .heavy))
                 .tracking(3)
                 .foregroundStyle(Theme.lights)
@@ -114,16 +135,14 @@ private struct ShareableGameCard: View {
                 .font(.caps(12, weight: .heavy))
                 .tracking(1.5)
                 .foregroundStyle(Theme.lights)
-                .padding(.top, 4)
             } else {
                 HStack(spacing: 6) {
-                    Image(systemName: game.userWon ? "hand.thumbsup.fill" : "hand.thumbsdown.fill")
-                    Text(game.userWon ? "I saw a win" : "I was there for the loss")
+                    Image(systemName: game.userWon ? "trophy.fill" : "baseball.fill")
+                    Text(game.userWon ? "Took the W" : "Caught the L")
                 }
                 .font(.caps(12, weight: .heavy))
                 .tracking(1.5)
                 .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
-                .padding(.top, 4)
             }
 
             Spacer(minLength: 0)
@@ -160,10 +179,9 @@ private struct Scoreboard: View {
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 6) {
-                Text(game.date.formatted(date: .complete, time: .omitted).uppercased())
-                    .font(.caps(10, weight: .heavy))
-                    .tracking(2)
-                    .foregroundStyle(Theme.clay)
+                Text(game.date.formatted(date: .complete, time: .omitted))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
                 Spacer()
                 Image(systemName: game.weather.symbol)
                     .font(.system(size: 11, weight: .bold))
@@ -204,7 +222,7 @@ private struct Scoreboard: View {
                         .frame(width: 6, height: 6)
                     Text(resultText)
                         .font(.caps(11, weight: .heavy))
-                        .tracking(2)
+                        .tracking(1.5)
                         .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
                     Spacer()
                     if game.attendance > 0 || game.durationMinutes > 0 {
@@ -213,6 +231,7 @@ private struct Scoreboard: View {
                             .foregroundStyle(Theme.textMuted)
                     }
                 }
+                .padding(.top, 2)
             }
         }
         .padding(16)
@@ -228,7 +247,7 @@ private struct Scoreboard: View {
 
     private var resultText: String {
         let team = game.userRootedForHome ? game.homeTeam : game.awayTeam
-        return "\(game.userWon ? "WIN" : "LOSS") · CHEERED FOR \(team.abbreviation)"
+        return "\(game.userWon ? "WIN" : "LOSS") · ROOTED FOR \(team.abbreviation)"
     }
 
     private var durationString: String {
@@ -260,85 +279,169 @@ private struct TeamColumn: View {
 
             Text(team.name.isEmpty ? team.city : team.name)
                 .font(.caps(10, weight: .semibold))
-                .tracking(1.4)
+                .tracking(1)
                 .foregroundStyle(Theme.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
 }
 
-// MARK: - Ticket stub
+// MARK: - Ticket stub (realism)
 
-private struct TicketStub: View {
+private struct TicketStubReal: View {
     let game: AttendedGame
+
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text("TICKET STUB")
-                        .font(.caps(10, weight: .heavy))
-                        .tracking(2.5)
-                        .foregroundStyle(Theme.parchmentInk.opacity(0.7))
-                    if let conf = game.confirmationNumber {
-                        Text("#\(conf)")
-                            .font(.caps(8, weight: .heavy))
-                            .tracking(1)
-                            .foregroundStyle(Theme.clay)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(Theme.clay.opacity(0.15))
-                            )
+        VStack(spacing: 0) {
+            // Team-colored top band with notches
+            ZStack {
+                Rectangle()
+                    .fill(game.homeTeam.primary)
+                    .frame(height: 22)
+
+                // Perforation notches along the top edge
+                HStack(spacing: 0) {
+                    ForEach(0..<14, id: \.self) { i in
+                        Circle()
+                            .fill(Theme.parchment)
+                            .frame(width: 7, height: 7)
+                            .offset(y: -3.5)
+                        if i < 13 { Spacer() }
                     }
                 }
-                Text(game.ballpark.name)
-                    .font(.scoreboard(18, weight: .bold))
-                    .foregroundStyle(Theme.parchmentInk)
-                    .lineLimit(1)
-                HStack(spacing: 16) {
-                    StubField(label: "Sect", value: game.section)
-                    StubField(label: "Row", value: game.row)
-                    StubField(label: "Seat", value: game.seat)
+                .padding(.horizontal, 8)
+
+                // Small logo area
+                Text(game.homeTeam.abbreviation)
+                    .font(.caps(9, weight: .heavy))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .tracking(2)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 12)
+            }
+
+            // Main stub body
+            HStack(spacing: 0) {
+                // Left content
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 6) {
+                        Text(game.awayTeam.abbreviation)
+                            .font(.scoreboard(14, weight: .black))
+                            .foregroundStyle(Theme.parchmentInk)
+                        Text("@")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundStyle(Theme.parchmentInk.opacity(0.5))
+                        Text(game.homeTeam.abbreviation)
+                            .font(.scoreboard(14, weight: .black))
+                            .foregroundStyle(Theme.parchmentInk)
+                        if !game.isUpcoming {
+                            Text(game.scoreString)
+                                .font(.stat(12, weight: .heavy))
+                                .foregroundStyle(Theme.parchmentInk.opacity(0.6))
+                        }
+                    }
+
+                    Text(game.ballpark.name)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.parchmentInk)
+                        .lineLimit(1)
+
+                    HStack(spacing: 16) {
+                        StubField(label: "SEC", value: game.section)
+                        StubField(label: "ROW", value: game.row)
+                        StubField(label: "SEAT", value: game.seat)
+                    }
+                    .padding(.top, 2)
+
+                    // Faux barcode strip
+                    FauxBarcode()
+                        .padding(.top, 4)
+
+                    // Confirmation in monospaced ticketing style
+                    if let conf = game.confirmationNumber {
+                        HStack(spacing: 4) {
+                            Text("CONF#")
+                                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(Theme.parchmentInk.opacity(0.45))
+                            Text(conf)
+                                .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                                .foregroundStyle(Theme.parchmentInk.opacity(0.75))
+                        }
+                    }
                 }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            TearLine()
-                .stroke(Theme.parchmentInk.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                .frame(width: 1)
+                // Tear line with real perforation notches
+                TearPerforation()
+                    .fill(Theme.parchmentInk.opacity(0.3))
+                    .frame(width: 12)
 
-            VStack(spacing: 6) {
-                Image(systemName: "ticket.fill")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Theme.clay)
-                Text("ADMIT")
-                    .font(.caps(8, weight: .heavy))
-                    .tracking(1.2)
-                    .foregroundStyle(Theme.parchmentInk.opacity(0.6))
-                Text("ONE")
-                    .font(.scoreboard(14, weight: .bold))
-                    .foregroundStyle(Theme.parchmentInk)
+                // Right stub (tear-off portion)
+                VStack(spacing: 4) {
+                    Text("ADMIT")
+                        .font(.system(size: 7, weight: .heavy, design: .monospaced))
+                        .tracking(1.5)
+                        .foregroundStyle(Theme.parchmentInk.opacity(0.45))
+                    Text("ONE")
+                        .font(.scoreboard(16, weight: .black))
+                        .foregroundStyle(Theme.parchmentInk)
+                    if !game.verified {
+                        Text("UNVERIFIED")
+                            .font(.system(size: 6, weight: .bold))
+                            .foregroundStyle(Theme.foul.opacity(0.7))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.foul.opacity(0.3)))
+                    }
+                    Text(game.date.formatted(.dateTime.day()))
+                        .font(.scoreboard(12, weight: .heavy))
+                        .foregroundStyle(Theme.parchmentInk.opacity(0.6))
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 8)
+                .frame(width: 70)
+                .background(Theme.parchmentInk.opacity(0.03))
             }
-            .padding(14)
-            .frame(width: 90)
         }
         .background(Theme.parchment)
-        .clipShape(.rect(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Theme.parchmentInk.opacity(0.10))
-        )
-        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
+        .parchmentTexture()
+        .clipShape(.rect(cornerRadius: 12))
+        .shadow(color: .black.opacity(0.35), radius: 14, y: 7)
     }
 }
 
-private struct TearLine: Shape {
+/// Perforation notches along the tear line — alternating circles punched out.
+private struct TearPerforation: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
+        let notchCount = 7
+        let notchDiam: CGFloat = 5
+        let spacing = rect.height / CGFloat(notchCount)
+        for i in 0..<notchCount {
+            let y = spacing * (CGFloat(i) + 0.5)
+            let notch = CGRect(x: rect.midX - notchDiam / 2, y: y - notchDiam / 2,
+                               width: notchDiam, height: notchDiam)
+            p.addEllipse(in: notch)
+        }
+        // Vertical line connecting the notches
         p.move(to: CGPoint(x: rect.midX, y: 0))
         p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
         return p
+    }
+}
+
+/// Simple faux barcode for the ticket stub.
+private struct FauxBarcode: View {
+    var body: some View {
+        HStack(spacing: 1) {
+            ForEach(0..<22, id: \.self) { i in
+                Rectangle()
+                    .fill(Theme.parchmentInk.opacity(0.25))
+                    .frame(width: [1, 2, 3, 1, 4, 1, 2, 3, 1, 2, 1, 2, 3, 1, 4, 1, 2, 1, 3, 2, 1, 2][i],
+                           height: 16)
+            }
+        }
     }
 }
 
@@ -347,12 +450,12 @@ private struct StubField: View {
     let value: String
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(label.uppercased())
-                .font(.caps(8, weight: .heavy))
+            Text(label)
+                .font(.system(size: 7, weight: .heavy, design: .monospaced))
                 .tracking(1)
-                .foregroundStyle(Theme.parchmentInk.opacity(0.55))
+                .foregroundStyle(Theme.parchmentInk.opacity(0.4))
             Text(value)
-                .font(.stat(13, weight: .heavy))
+                .font(.system(size: 13, weight: .heavy, design: .monospaced))
                 .foregroundStyle(Theme.parchmentInk)
         }
     }
@@ -366,11 +469,12 @@ private struct BallparkPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Theme.clay)
+                Rectangle()
+                    .fill(game.homeTeam.primary)
+                    .frame(width: 3, height: 18)
+                    .clipShape(.capsule)
                 Text(game.ballpark.nickname ?? game.ballpark.name)
-                    .font(.scoreboard(16, weight: .bold))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
             }
@@ -389,9 +493,8 @@ private struct BallparkPanel: View {
                         Image(systemName: "eyes")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(Theme.lights)
-                        Text("VIEW FROM YOUR SEAT")
-                            .font(.caps(9, weight: .heavy))
-                            .tracking(1.5)
+                        Text("Your view")
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Theme.lights.opacity(0.8))
                         Spacer()
                         Text("Section \(game.section)")
@@ -416,7 +519,7 @@ private struct BallparkPanel: View {
     }
 }
 
-// MARK: - Milestones
+// MARK: - Milestones (medallions)
 
 private struct MilestonesPanel: View {
     let game: AttendedGame
@@ -424,20 +527,18 @@ private struct MilestonesPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: "star.circle.fill")
-                    .font(.system(size: 14, weight: .bold))
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.lights)
-                Text("Career Milestones".uppercased())
-                    .font(.caps(11, weight: .heavy))
-                    .tracking(2.5)
-                    .foregroundStyle(Theme.clay)
+                Text("Career Milestones")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
                 Spacer()
-                Text("YOU SAW THIS")
-                    .font(.caps(9, weight: .heavy))
-                    .tracking(1.5)
+                Text("You were there")
+                    .font(.system(size: 9, weight: .heavy))
                     .foregroundStyle(Theme.lights)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 3)
                     .background(
                         Capsule().fill(Theme.lights.opacity(0.16))
                     )
@@ -446,33 +547,55 @@ private struct MilestonesPanel: View {
             VStack(spacing: 10) {
                 ForEach(game.milestones) { milestone in
                     NavigationLink(value: milestone) {
-                        MilestoneRow(milestone: milestone)
+                        MilestoneMedallion(milestone: milestone)
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
         .padding(16)
-        .nightCard()
+        .nightCardDeep()
         .navigationDestination(for: PlayerMilestone.self) { milestone in
             MilestoneDetailView(milestone: milestone, game: game)
         }
     }
 }
 
-private struct MilestoneRow: View {
+private struct MilestoneMedallion: View {
     let milestone: PlayerMilestone
+    @State private var pulse: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
+            // Medallion — custom drawn instead of SF Symbol circle
             ZStack {
-                Circle().fill(Theme.clayGradient)
-                Circle().strokeBorder(Theme.lights, lineWidth: 1.5)
+                // Outer ring
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(colors: [Theme.lights, Theme.clay, Theme.lights],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: 2
+                    )
+                    .frame(width: 48, height: 48)
+
+                // Inner badge
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Theme.clay.opacity(0.7), Theme.clayDeep.opacity(0.9)],
+                            center: .topLeading,
+                            startRadius: 0,
+                            endRadius: 24
+                        )
+                    )
+                    .frame(width: 36, height: 36)
+
                 Image(systemName: milestone.category.symbol)
                     .font(.system(size: 16, weight: .heavy))
                     .foregroundStyle(.white)
             }
-            .frame(width: 44, height: 44)
+            .scaleEffect(pulse ? 1.05 : 1.0)
+            .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: pulse)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(milestone.title)
@@ -497,10 +620,7 @@ private struct MilestoneRow: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.cardElevated)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Theme.lights.opacity(0.15), lineWidth: 1)
-        )
+        .onAppear { pulse = true }
     }
 }
 
@@ -510,10 +630,9 @@ private struct HighlightsPanel: View {
     let game: AttendedGame
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Highlights".uppercased())
-                .font(.caps(11, weight: .heavy))
-                .tracking(2.5)
-                .foregroundStyle(Theme.clay)
+            Text("Scoring plays")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
 
             VStack(spacing: 10) {
                 ForEach(game.highlights, id: \.self) { h in
@@ -526,7 +645,7 @@ private struct HighlightsPanel: View {
 
                         Image(systemName: h.symbol)
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(h.kind == .walkoff ? Theme.lights : Theme.clay)
+                            .foregroundStyle(h.kind == .walkoff ? Theme.lights : TeamColors.from(team: game.homeTeam).primary)
                             .frame(width: 24, height: 24)
 
                         Text(h.description)
@@ -550,10 +669,9 @@ private struct FactsPanel: View {
     let game: AttendedGame
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Game Facts".uppercased())
-                .font(.caps(11, weight: .heavy))
-                .tracking(2.5)
-                .foregroundStyle(Theme.clay)
+            Text("Box score")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 Fact(label: "Total Runs", value: "\(game.totalRuns)")
                 Fact(label: "Attendance", value: game.attendance.formatted(.number))
@@ -575,9 +693,8 @@ private struct Fact: View {
     let value: String
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
-                .font(.caps(9, weight: .heavy))
-                .tracking(1.2)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Theme.textMuted)
             Text(value)
                 .font(.stat(15, weight: .heavy))
@@ -592,26 +709,25 @@ private struct Fact: View {
     }
 }
 
-// MARK: - Source email
+// MARK: - Source row
 
-private struct SourceEmailRow: View {
+private struct SourceRow: View {
     let game: AttendedGame
 
-    private var isManual: Bool { game.source == "Manual entry" }
+    private var isManual: Bool { game.source.contains("Manual") }
     private var icon: String { isManual ? "square.and.pencil" : "square.and.arrow.down.fill" }
     private var caption: String { isManual ? "Added by hand" : "Imported from a shared ticket" }
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(Theme.clay)
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(Theme.clay.opacity(0.16)))
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(TeamColors.from(team: game.homeTeam).primary.opacity(0.14)))
             VStack(alignment: .leading, spacing: 1) {
-                Text(caption.uppercased())
-                    .font(.caps(9, weight: .heavy))
-                    .tracking(1.5)
+                Text(caption)
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.textMuted)
                 Text(game.source)
                     .font(.system(size: 12, weight: .semibold))
@@ -619,12 +735,13 @@ private struct SourceEmailRow: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
+            if !game.verified && !game.isUpcoming {
+                Image(systemName: "questionmark.diamond")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted.opacity(0.6))
+            }
         }
         .padding(12)
-        .nightCard(cornerRadius: 14)
+        .nightCardDeep(cornerRadius: 14)
     }
-}
-
-extension AttendedGame {
-    var ticketSource: String { source }
 }

@@ -8,6 +8,7 @@ struct StatsView: View {
         NavigationStack {
             ZStack {
                 Theme.nightGradient.ignoresSafeArea()
+                Theme.nightVignette.ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 18) {
@@ -15,9 +16,9 @@ struct StatsView: View {
                         HeroSummary()
                             .padding(.horizontal, 16)
 
-                        // On this day
-                        if !store.onThisDayGames.isEmpty {
-                            OnThisDayCard()
+                        // Season heatmap strip
+                        if !store.completedGames.isEmpty {
+                            SeasonHeatmap()
                                 .padding(.horizontal, 16)
                         }
 
@@ -29,16 +30,22 @@ struct StatsView: View {
                         LuckyCharmCard()
                             .padding(.horizontal, 16)
 
-                        // Ballparks unlocked
+                        // Ballpark progress
                         BallparkProgressCard()
                             .padding(.horizontal, 16)
 
-                        // 30-ballpark quest
-                        BallparkQuestCard()
+                        // Achievements
+                        AchievementsPanel()
                             .padding(.horizontal, 16)
 
-                        // Milestones
-                        MilestonesCard()
+                        // On this day
+                        if !store.onThisDayGames.isEmpty {
+                            OnThisDayCard()
+                                .padding(.horizontal, 16)
+                        }
+
+                        // Ballpark quest
+                        BallparkQuestCard()
                             .padding(.horizontal, 16)
 
                         // Top opponents
@@ -62,32 +69,108 @@ struct StatsView: View {
 
 private struct HeroSummary: View {
     @Environment(DiaryStore.self) private var store
+    private var tc: TeamColors { .from(team: store.favoriteTeam) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Career Total".uppercased())
-                        .font(.caps(10, weight: .heavy))
-                        .tracking(2.5)
-                        .foregroundStyle(Theme.clay)
+                    Text("Lifetime")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(tc.primary)
                     Text("\(store.totalGames) games")
                         .font(.scoreboard(34, weight: .black))
                         .foregroundStyle(Theme.textPrimary)
+                    Text("since day one")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.textMuted)
                 }
                 Spacer()
                 BaseballMark(size: 56)
-                    .shadow(color: Theme.clay.opacity(0.4), radius: 10)
+                    .shadow(color: tc.primary.opacity(0.4), radius: 10)
             }
 
             HStack(spacing: 12) {
                 StatTile(value: "\(store.ballparkCount)", suffix: "/30", label: "Ballparks")
-                StatTile(value: "\(store.totalRuns)", label: "Runs witnessed")
+                StatTile(value: "\(store.totalRuns)", label: "Runs")
                 StatTile(value: "\(store.homeRunsWitnessed)", label: "Home runs")
             }
         }
         .padding(16)
         .nightCard()
+        .overlay(alignment: .topLeading) {
+            Rectangle()
+                .fill(tc.primary)
+                .frame(width: 36, height: 3)
+                .clipShape(.capsule)
+                .offset(y: -1.5)
+                .padding(.horizontal, 16)
+        }
+    }
+}
+
+// MARK: - Season heatmap
+
+private struct SeasonHeatmap: View {
+    @Environment(DiaryStore.self) private var store
+
+    private var yearlyData: [(year: Int, count: Int)] {
+        let groups = Dictionary(grouping: store.completedGames) { g in
+            Calendar.current.component(.year, from: g.date)
+        }
+        return groups.map { ($0.key, $0.value.count) }.sorted { $0.year < $1.year }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Season by season")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
+
+            if yearlyData.isEmpty {
+                Text("Attend a game to start building your history.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textMuted)
+            } else {
+                let maxCount = yearlyData.map(\.count).max() ?? 1
+                VStack(spacing: 6) {
+                    ForEach(yearlyData, id: \.year) { pair in
+                        HStack(spacing: 10) {
+                            Text("\(pair.year)")
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(Theme.textMuted)
+                                .frame(width: 42, alignment: .leading)
+
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule()
+                                        .fill(Theme.cardElevated)
+                                        .frame(height: 14)
+
+                                    Capsule()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [Theme.clay, Theme.lights],
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
+                                        )
+                                        .frame(width: max(8, geo.size.width * CGFloat(pair.count) / CGFloat(maxCount)), height: 14)
+                                }
+                            }
+                            .frame(height: 14)
+
+                            Text("\(pair.count)")
+                                .font(.stat(12, weight: .heavy))
+                                .foregroundStyle(Theme.textPrimary)
+                                .frame(width: 20, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .nightCardDeep()
     }
 }
 
@@ -107,9 +190,8 @@ private struct StatTile: View {
                         .foregroundStyle(Theme.textMuted)
                 }
             }
-            Text(label.uppercased())
-                .font(.caps(9, weight: .heavy))
-                .tracking(1.2)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Theme.textMuted)
                 .lineLimit(1)
         }
@@ -131,11 +213,10 @@ private struct RecordCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Your Record".uppercased())
-                    .font(.caps(11, weight: .heavy))
-                    .tracking(2.5)
-                    .foregroundStyle(Theme.clay)
+            HStack(spacing: 12) {
+                Text("W–L")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
                 Spacer()
                 Text(percentString)
                     .font(.stat(13, weight: .heavy))
@@ -147,9 +228,8 @@ private struct RecordCard: View {
                     Text("\(store.winCount)")
                         .font(.scoreboard(44, weight: .black))
                         .foregroundStyle(Theme.grass)
-                    Text("WINS")
-                        .font(.caps(10, weight: .heavy))
-                        .tracking(2)
+                    Text("W")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.textMuted)
                 }
                 Text("–")
@@ -159,9 +239,8 @@ private struct RecordCard: View {
                     Text("\(store.lossCount)")
                         .font(.scoreboard(44, weight: .black))
                         .foregroundStyle(Theme.foul)
-                    Text("LOSSES")
-                        .font(.caps(10, weight: .heavy))
-                        .tracking(2)
+                    Text("L")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.textMuted)
                 }
                 Spacer()
@@ -169,14 +248,12 @@ private struct RecordCard: View {
                     Text("\(store.longestStreak)")
                         .font(.scoreboard(28, weight: .black))
                         .foregroundStyle(Theme.lights)
-                    Text("BEST STREAK")
-                        .font(.caps(9, weight: .heavy))
-                        .tracking(1.5)
+                    Text("Best streak")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Theme.textMuted)
                 }
             }
 
-            // Win bar
             GeometryReader { geo in
                 let totalWidth = geo.size.width
                 let winRatio = store.games.isEmpty ? 0 : Double(store.winCount) / Double(store.games.count)
@@ -205,60 +282,19 @@ private struct RecordCard: View {
     }
 }
 
-// MARK: - Ballpark progress
+// MARK: - Achievements panel (medallions)
 
-private struct BallparkProgressCard: View {
+private struct AchievementsPanel: View {
     @Environment(DiaryStore.self) private var store
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Ballparks Unlocked".uppercased())
-                    .font(.caps(11, weight: .heavy))
-                    .tracking(2.5)
-                    .foregroundStyle(Theme.clay)
-                Spacer()
-                Text("\(store.ballparkCount)/30")
-                    .font(.stat(13, weight: .heavy))
-                    .foregroundStyle(Theme.textPrimary)
-            }
-
-            // Grid of all 30 parks
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 10), spacing: 6) {
-                ForEach(Ballpark.all) { park in
-                    let visited = store.visitedBallparkIds.contains(park.id)
-                    Circle()
-                        .fill(visited ? AnyShapeStyle(Theme.clayGradient) : AnyShapeStyle(Color.white.opacity(0.06)))
-                        .overlay(
-                            Circle().strokeBorder(visited ? Theme.lights.opacity(0.7) : Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                        .aspectRatio(1, contentMode: .fit)
-                        .overlay(
-                            Image(systemName: visited ? "checkmark" : "")
-                                .font(.system(size: 8, weight: .heavy))
-                                .foregroundStyle(.white)
-                        )
-                }
-            }
-        }
-        .padding(16)
-        .nightCard()
-    }
-}
-
-// MARK: - Milestones
-
-private struct MilestonesCard: View {
-    @Environment(DiaryStore.self) private var store
-
-    var milestones: [(symbol: String, title: String, detail: String, unlocked: Bool, color: Color)] {
+    private var achievements: [(id: String, symbol: String, title: String, detail: String, unlocked: Bool, tint: Color)] {
         [
-            ("ticket.fill", "First Game", "Welcome to the diary", store.totalGames >= 1, Theme.clay),
-            ("baseball.fill", "Five Stadiums", "Visit 5 unique ballparks", store.ballparkCount >= 5, Theme.lights),
-            ("globe.americas.fill", "Coast to Coast", "AL East + NL West parks", coastToCoast, Theme.grass),
-            ("star.circle.fill", "Walk-Off Witness", "See a game decided in the final at-bat", witnessedWalkoff, Theme.foul),
-            ("flame.fill", "Win Streak x3", "3 wins in a row at games you attended", store.longestStreak >= 3, Theme.clayDeep),
-            ("crown.fill", "Pilgrim", "Visit all 30 ballparks", store.ballparkCount == 30, Theme.lights)
+            ("first", "ticket.fill", "First Game", "Welcome to the diary", store.totalGames >= 1, Theme.clay),
+            ("five", "building.columns.fill", "Five Stadiums", "Visit 5 unique ballparks", store.ballparkCount >= 5, Theme.lights),
+            ("coast", "globe.americas.fill", "Coast to Coast", "AL East + NL West", coastToCoast, Theme.grass),
+            ("walkoff", "star.circle.fill", "Walk-Off", "A game decided in the final at-bat", witnessedWalkoff, Theme.foul),
+            ("streak", "flame.fill", "Win Streak x3", "3 wins in a row", store.longestStreak >= 3, Theme.clayDeep),
+            ("pilgrim", "crown.fill", "Pilgrim", "All 30 ballparks visited", store.ballparkCount == 30, Theme.lights)
         ]
     }
 
@@ -273,40 +309,131 @@ private struct MilestonesCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Milestones".uppercased())
-                .font(.caps(11, weight: .heavy))
-                .tracking(2.5)
-                .foregroundStyle(Theme.clay)
+            Text("Achievements")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
 
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                ForEach(milestones.indices, id: \.self) { i in
-                    let m = milestones[i]
-                    HStack(spacing: 10) {
-                        Image(systemName: m.symbol)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(m.unlocked ? m.color : Theme.textMuted)
-                            .frame(width: 36, height: 36)
-                            .background(
-                                Circle().fill((m.unlocked ? m.color : Theme.textMuted).opacity(0.16))
-                            )
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(m.title)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(m.unlocked ? Theme.textPrimary : Theme.textMuted)
-                                .lineLimit(1)
-                            Text(m.detail)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Theme.textMuted)
-                                .lineLimit(2)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Theme.cardElevated.opacity(m.unlocked ? 1.0 : 0.6))
+                ForEach(achievements, id: \.id) { a in
+                    AchievementPendant(
+                        symbol: a.symbol,
+                        title: a.title,
+                        detail: a.detail,
+                        unlocked: a.unlocked,
+                        tint: a.tint
                     )
-                    .opacity(m.unlocked ? 1.0 : 0.7)
+                }
+            }
+        }
+        .padding(16)
+        .nightCardDeep()
+    }
+}
+
+/// Custom achievement badge — a hexagonal pendant / patch instead of SF Symbol
+/// in a tinted circle. Unlocked = full color with glow; locked = desaturated.
+private struct AchievementPendant: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let unlocked: Bool
+    let tint: Color
+    @State private var shimmer: Bool = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // Hex badge
+            ZStack {
+                if unlocked {
+                    Circle()
+                        .fill(tint.opacity(0.18))
+                        .frame(width: 42, height: 42)
+                    Circle()
+                        .strokeBorder(tint.opacity(0.5), lineWidth: 1.5)
+                        .frame(width: 42, height: 42)
+                    // Glow ring
+                    Circle()
+                        .strokeBorder(tint.opacity(shimmer ? 0.6 : 0.2), lineWidth: 2)
+                        .frame(width: 48, height: 48)
+                        .blur(radius: 3)
+                } else {
+                    Circle()
+                        .fill(Theme.cardElevated)
+                        .frame(width: 42, height: 42)
+                    Circle()
+                        .strokeBorder(Theme.textMuted.opacity(0.3), lineWidth: 1)
+                        .frame(width: 42, height: 42)
+                }
+
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(unlocked ? tint : Theme.textMuted)
+            }
+            .frame(width: 52, height: 52)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(unlocked ? Theme.textPrimary : Theme.textMuted)
+                    .lineLimit(1)
+                Text(unlocked ? detail : "Not yet")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Theme.cardElevated.opacity(unlocked ? 1.0 : 0.5))
+        )
+        .opacity(unlocked ? 1.0 : 0.65)
+        .onAppear {
+            if unlocked { shimmer = true }
+        }
+        .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: shimmer)
+    }
+}
+
+// MARK: - Ballpark progress
+
+private struct BallparkProgressCard: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Ballparks visited")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text("\(store.ballparkCount)/30")
+                    .font(.stat(13, weight: .heavy))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 10), spacing: 5) {
+                ForEach(Ballpark.all) { park in
+                    let visited = store.visitedBallparkIds.contains(park.id)
+                    Circle()
+                        .fill(visited ? AnyShapeStyle(
+                            LinearGradient(colors: [park.team.primary, park.team.primary.opacity(0.7)],
+                                           startPoint: .top, endPoint: .bottom)
+                        ) : AnyShapeStyle(Color.white.opacity(0.06)))
+                        .overlay(
+                            Circle().strokeBorder(visited ? park.team.secondary.opacity(0.5) : Color.white.opacity(0.1), lineWidth: 1)
+                        )
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay(
+                            Group {
+                                if visited {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 7, weight: .heavy))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+                        )
                 }
             }
         }
@@ -326,10 +453,9 @@ private struct OnThisDayCard: View {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Theme.lights)
-                Text("On This Day".uppercased())
-                    .font(.caps(11, weight: .heavy))
-                    .tracking(2.5)
-                    .foregroundStyle(Theme.clay)
+                Text("On this day")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
             }
 
             ForEach(store.onThisDayGames) { game in
@@ -363,7 +489,7 @@ private struct OnThisDayCard: View {
             }
         }
         .padding(16)
-        .nightCard()
+        .nightCardDeep()
         .navigationDestination(for: AttendedGame.self) { GameDetailView(game: $0) }
     }
 
@@ -372,7 +498,7 @@ private struct OnThisDayCard: View {
     }
     private func yearsAgoLabel(_ date: Date) -> String {
         let y = Calendar.current.dateComponents([.year], from: date, to: .now).year ?? 0
-        return y <= 0 ? "earlier this year" : (y == 1 ? "1 year ago today" : "\(y) years ago today")
+        return y <= 0 ? "This year" : (y == 1 ? "1 year ago" : "\(y) years ago")
     }
 }
 
@@ -383,10 +509,9 @@ private struct LuckyCharmCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Lucky Charm".uppercased())
-                .font(.caps(11, weight: .heavy))
-                .tracking(2.5)
-                .foregroundStyle(Theme.clay)
+            Text("Lucky charm")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
 
             if let charm = store.luckyCharm, charm.wins + charm.losses > 0 {
                 HStack(spacing: 14) {
@@ -410,21 +535,21 @@ private struct LuckyCharmCard: View {
                     Spacer(minLength: 0)
                 }
             } else {
-                Text("Attend a game with your favorite team to unlock your lucky-charm record.")
+                Text("See your favorite team live to unlock your lucky-charm record.")
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.textMuted)
             }
         }
         .padding(16)
-        .nightCard()
+        .nightCardDeep()
     }
 
     private func charmBlurb(_ charm: (wins: Int, losses: Int, team: Team)) -> String {
         let total = charm.wins + charm.losses
         let pct = total > 0 ? Int(Double(charm.wins) / Double(total) * 100) : 0
-        if pct >= 60 { return "They win \(pct)% of the time when you're in the stands. Keep showing up." }
-        if pct >= 40 { return "A true coin flip with you watching — \(pct)% wins." }
-        return "Tough luck so far — \(pct)% wins when you attend."
+        if pct >= 65 { return "A \(pct)% win rate when you're in the building. You're their good-luck charm." }
+        if pct >= 45 { return "Basically a coin flip with you watching — \(pct)% wins." }
+        return "\(pct)% wins when you attend. The baseball gods owe you one."
     }
 }
 
@@ -436,10 +561,9 @@ private struct BallparkQuestCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("The 30-Ballpark Quest".uppercased())
-                    .font(.caps(11, weight: .heavy))
-                    .tracking(2.5)
-                    .foregroundStyle(Theme.clay)
+                Text("The 30-ballpark quest")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
                 Spacer()
                 Text("\(store.ballparkCount)/30")
                     .font(.stat(13, weight: .heavy))
@@ -451,12 +575,12 @@ private struct BallparkQuestCard: View {
                     Image(systemName: "crown.fill")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(Theme.lights)
-                    Text("Quest complete — all 30 ballparks visited. You're a Pilgrim.")
+                    Text("Every park, every city. You've done it.")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                 }
             } else {
-                Text("\(store.ballparksRemaining.count) to go. Next up:")
+                Text("\(store.ballparksRemaining.count) left. Next up:")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                 VStack(spacing: 8) {
@@ -495,10 +619,9 @@ private struct TopOpponentCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Most-Seen Opponent".uppercased())
-                .font(.caps(11, weight: .heavy))
-                .tracking(2.5)
-                .foregroundStyle(Theme.clay)
+            Text("Most-seen opponent")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
 
             if let pair = store.mostSeenOpponent {
                 HStack(spacing: 14) {
@@ -515,7 +638,7 @@ private struct TopOpponentCard: View {
                         Text(pair.team.fullName)
                             .font(.scoreboard(18, weight: .bold))
                             .foregroundStyle(Theme.textPrimary)
-                        Text("\(pair.count) games against your favorite team")
+                        Text("\(pair.count) games against your team")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.textSecondary)
                     }
@@ -548,6 +671,6 @@ private struct TopOpponentCard: View {
             }
         }
         .padding(16)
-        .nightCard()
+        .nightCardDeep()
     }
 }

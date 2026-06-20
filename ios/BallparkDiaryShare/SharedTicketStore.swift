@@ -15,7 +15,7 @@ nonisolated struct SharedTicketPayload: Codable, Sendable, Hashable {
 /// The extension appends payloads; the app drains them on next launch/foreground.
 nonisolated enum SharedTicketStore {
     static let appGroup = "group.app.rork.w8eewhvpa28g5c9ao7fpw"
-    private static let key = "ballparkdiary.sharedTickets.v1"
+    private static let key = "ballparkdiary.sharedTickets.v2"
 
     private static var defaults: UserDefaults? {
         UserDefaults(suiteName: appGroup)

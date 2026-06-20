@@ -7,10 +7,11 @@ struct ShareView: View {
     let extensionContext: NSExtensionContext?
 
     @State private var phase: Phase = .working
+    @State private var savedCount: Int = 0
 
     enum Phase: Equatable {
         case working
-        case saved(count: Int, source: String)
+        case saved(count: Int)
         case nothingFound
     }
 
@@ -30,12 +31,17 @@ struct ShareView: View {
             )
             .ignoresSafeArea()
 
-            VStack(spacing: 18) {
+            VStack(spacing: 20) {
+                Spacer().frame(height: 20)
+
                 icon
+                    .frame(height: 64)
+
                 Text(title)
-                    .font(.system(size: 22, weight: .heavy, design: .serif))
+                    .font(.system(size: 20, weight: .black, design: .rounded))
                     .foregroundStyle(Self.textPrimary)
                     .multilineTextAlignment(.center)
+
                 Text(subtitle)
                     .font(.system(size: 14))
                     .foregroundStyle(Self.textSecondary)
@@ -44,7 +50,7 @@ struct ShareView: View {
 
                 if phase != .working {
                     Button(action: close) {
-                        Text("Done")
+                        Text("Open Diary")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -67,37 +73,52 @@ struct ShareView: View {
     private var icon: some View {
         switch phase {
         case .working:
-            ProgressView()
-                .controlSize(.large)
-                .tint(Self.clay)
+            ZStack {
+                Circle()
+                    .strokeBorder(Self.clay.opacity(0.3), lineWidth: 2)
+                    .frame(width: 56, height: 56)
+                ProgressView()
+                    .controlSize(.regular)
+                    .tint(Self.clay)
+            }
         case .saved:
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 54))
-                .foregroundStyle(Self.grass)
+            ZStack {
+                Circle()
+                    .fill(Self.grass.opacity(0.15))
+                    .frame(width: 64, height: 64)
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 36))
+                    .foregroundStyle(Self.grass)
+            }
         case .nothingFound:
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 48))
-                .foregroundStyle(Self.textSecondary)
+            ZStack {
+                Circle()
+                    .fill(Self.textSecondary.opacity(0.1))
+                    .frame(width: 56, height: 56)
+                Image(systemName: "ticket")
+                    .font(.system(size: 24))
+                    .foregroundStyle(Self.textSecondary)
+            }
         }
     }
 
     private var title: String {
         switch phase {
         case .working: return "Reading your ticket…"
-        case .saved: return "Added to Ballpark Diary"
-        case .nothingFound: return "Saved for review"
+        case .saved(let count):
+            return count == 1 ? "Ticket queued" : "\(count) tickets queued"
+        case .nothingFound: return "No matchup found"
         }
     }
 
     private var subtitle: String {
         switch phase {
         case .working:
-            return "Scanning on your device — nothing leaves your phone."
-        case let .saved(count, source):
-            let noun = count == 1 ? "ticket" : "tickets"
-            return "\(count) \(source) \(noun) queued. Open Ballpark Diary to see your game confirmed against the real box score."
+            return "Scanning on-device — nothing leaves your phone."
+        case .saved:
+            return "Open the diary to confirm against the real box score."
         case .nothingFound:
-            return "We couldn't read a matchup from that. Open Ballpark Diary and add it manually if needed."
+            return "Couldn't read a matchup. Open the diary to add this game manually."
         }
     }
 
@@ -108,6 +129,7 @@ struct ShareView: View {
             withAnimation(.snappy) { phase = .nothingFound }
             return
         }
+
         for item in usable {
             SharedTicketStore.append(
                 SharedTicketPayload(
@@ -118,10 +140,14 @@ struct ShareView: View {
                 )
             )
         }
-        let source = usable.first?.sourceHint ?? "shared"
+        savedCount = usable.count
         withAnimation(.snappy) {
-            phase = .saved(count: usable.count, source: source == "Shared ticket" ? "" : source)
+            phase = .saved(count: usable.count)
         }
+        // Success haptic
+        #if canImport(UIKit)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        #endif
     }
 
     private func close() {

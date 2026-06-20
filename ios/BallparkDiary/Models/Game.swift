@@ -29,9 +29,14 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     /// (ticket for a future game — no score yet). Optional for backward-compatible
     /// decoding of diaries saved before this field existed (treated as completed).
     let status: Status?
+    /// Whether this game was confirmed against the real MLB box score.
+    /// nil for backward-compatible decoding of older saves (treated as verified).
+    let isVerified: Bool?
 
     /// Resolved status, defaulting older saved games to `.completed`.
     var gameStatus: Status { status ?? .completed }
+    /// Whether verified against the real box score. Legacy saves default to true.
+    var verified: Bool { isVerified ?? true }
     /// A ticket for a game that hasn't been played yet — no real score exists.
     var isUpcoming: Bool { gameStatus == .upcoming }
 
@@ -67,7 +72,8 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
             highlights: highlights, milestones: milestones,
-            emailSubject: emailSubject, source: source, status: .completed
+            emailSubject: emailSubject, source: source, status: .completed,
+            isVerified: true
         )
     }
 
@@ -96,7 +102,8 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             durationMinutes: details.durationMinutes > 0 ? details.durationMinutes : durationMinutes,
             highlights: AttendedGame.highlights(from: details),
             milestones: AttendedGame.milestones(from: details),
-            emailSubject: emailSubject, source: source, status: .completed
+            emailSubject: emailSubject, source: source, status: .completed,
+            isVerified: true
         )
     }
 
@@ -395,7 +402,8 @@ extension AttendedGame {
             milestones: [],
             emailSubject: emailSubject,
             source: source,
-            status: isFinal ? .completed : .upcoming
+            status: isFinal ? .completed : .upcoming,
+            isVerified: true
         )
     }
 }

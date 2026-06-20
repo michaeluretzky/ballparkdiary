@@ -15,12 +15,17 @@ struct DiaryView: View {
 
                     if !store.upcomingGames.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("UPCOMING")
-                                .font(.caps(11, weight: .heavy))
-                                .tracking(3)
-                                .foregroundStyle(Theme.lights)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 6)
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(store.favoriteTeam.primary)
+                                    .frame(width: 8, height: 8)
+                                Text("UPCOMING")
+                                    .font(.caps(11, weight: .heavy))
+                                    .tracking(3)
+                                    .foregroundStyle(store.favoriteTeam.primary)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.top, 6)
 
                             ForEach(store.upcomingGames) { game in
                                 NavigationLink(value: game) {
@@ -28,18 +33,30 @@ struct DiaryView: View {
                                         .padding(.horizontal, 16)
                                 }
                                 .buttonStyle(.plain)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        store.deleteGame(game.id)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                     }
 
                     ForEach(Array(groupedGames.enumerated()), id: \.element.0) { _, group in
                         VStack(alignment: .leading, spacing: 12) {
-                            Text(group.0.uppercased())
-                                .font(.caps(11, weight: .heavy))
-                                .tracking(3)
-                                .foregroundStyle(Theme.clay)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 6)
+                            HStack(spacing: 8) {
+                                Rectangle()
+                                    .fill(store.favoriteTeam.primary.opacity(0.6))
+                                    .frame(width: 24, height: 2)
+                                    .clipShape(.capsule)
+                                Text(group.0)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.top, 6)
 
                             ForEach(group.1) { game in
                                 NavigationLink(value: game) {
@@ -47,6 +64,13 @@ struct DiaryView: View {
                                         .padding(.horizontal, 16)
                                 }
                                 .buttonStyle(.plain)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        store.deleteGame(game.id)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                     }
@@ -54,11 +78,14 @@ struct DiaryView: View {
                     Color.clear.frame(height: 40)
                 }
             }
-            .background(Theme.nightGradient.ignoresSafeArea())
+            .background {
+                Theme.nightGradient.ignoresSafeArea()
+                Theme.nightVignette.ignoresSafeArea()
+            }
             .navigationTitle("Diary")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(Theme.nightDeep, for: .navigationBar)
+            .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
             .refreshable { await store.refresh() }
             .navigationDestination(for: AttendedGame.self) { game in
                 GameDetailView(game: game)
@@ -80,6 +107,7 @@ struct DiaryView: View {
 
 private struct DiaryHeader: View {
     @Environment(DiaryStore.self) private var store
+    private var tc: TeamColors { .from(team: store.favoriteTeam) }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -93,6 +121,14 @@ private struct DiaryHeader: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .nightCard()
+        .overlay(alignment: .topLeading) {
+            Rectangle()
+                .fill(tc.primary)
+                .frame(width: 40, height: 3)
+                .clipShape(.capsule)
+                .padding(.horizontal, 16)
+                .offset(y: -1.5)
+        }
     }
 }
 
@@ -104,9 +140,8 @@ private struct HeaderStat: View {
             Text(value)
                 .font(.stat(20, weight: .heavy))
                 .foregroundStyle(Theme.textPrimary)
-            Text(label.uppercased())
-                .font(.caps(9, weight: .heavy))
-                .tracking(1.5)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Theme.textMuted)
         }
     }
@@ -137,14 +172,15 @@ struct GameCard: View {
                         .foregroundStyle(Theme.textMuted)
                     TeamChip(team: game.homeTeam, primary: true)
                     Spacer()
+                    verifiedDot
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 10)
 
                 HStack(spacing: 8) {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.clay)
+                    Image(systemName: "mappin")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
                     Text(game.ballpark.name)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Theme.textSecondary)
@@ -152,8 +188,7 @@ struct GameCard: View {
                     Spacer()
                     if let conf = game.confirmationNumber {
                         Text("#\(conf)")
-                            .font(.caps(9, weight: .heavy))
-                            .tracking(0.8)
+                            .font(.system(size: 9, weight: .heavy, design: .monospaced))
                             .foregroundStyle(Theme.lights.opacity(0.85))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
@@ -187,7 +222,7 @@ struct GameCard: View {
             )
 
             Text(game.ballpark.name)
-                .font(.system(size: 14, weight: .black))
+                .font(.system(size: 14, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -217,10 +252,10 @@ struct GameCard: View {
 
     private var dateBadge: some View {
         HStack(spacing: 8) {
-            Text(game.date.formatted(.dateTime.month(.abbreviated)).uppercased())
+            Text(game.date.formatted(.dateTime.month(.abbreviated)))
                 .font(.caps(10, weight: .heavy))
                 .tracking(1)
-                .foregroundStyle(Theme.clay)
+                .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
             Text(game.date.formatted(.dateTime.day()))
                 .font(.stat(20, weight: .heavy))
                 .foregroundStyle(Theme.textPrimary)
@@ -270,6 +305,21 @@ struct GameCard: View {
                         .fill(Theme.cardElevated)
                 )
             }
+        }
+    }
+
+    // MARK: Verified indicator
+
+    @ViewBuilder
+    private var verifiedDot: some View {
+        if game.verified {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.grass.opacity(0.85))
+        } else {
+            Image(systemName: "questionmark.diamond")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textMuted.opacity(0.6))
         }
     }
 }

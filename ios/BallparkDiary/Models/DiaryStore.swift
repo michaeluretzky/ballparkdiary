@@ -28,11 +28,23 @@ final class DiaryStore {
     /// Successfully connected sources (shown in the Inboxes tab).
     var connectedInboxes: [ConnectedInbox] = []
 
+    /// Games that couldn't be confirmed and were dropped — surfaced to user.
+    var droppedCandidates: [DroppedCandidate] = []
+
+    /// Local retry tracking for shared ticket payloads (in-memory only).
+    private var importAttempts: [String: (count: Int, firstSeen: Date)] = [:]
+
     private let defaults = UserDefaults.standard
-    private let storageKey = "ballparkdiary.state.v1"
+    private let storageKey = "ballparkdiary.state.v2"
+
+    /// Max failed import attempts before dropping a payload.
+    private static let maxImportAttempts = 5
+    /// Max days a payload can sit unconfirmed before dropping.
+    private static let maxImportAgeDays = 7
 
     init() {
         load()
+        collapseDuplicates()
     }
 
     /// Persisted choice of the user's home team. Used to pre-rotate the map
@@ -139,9 +151,36 @@ final class DiaryStore {
         Ballpark.all.filter { !visitedBallparkIds.contains($0.id) }
     }
 
+    // MARK: - Canonical identity
+
+    /// Calendar day + home team + away team uniquely identifies a game.
+    /// Used for dedup across shared imports and manual entries.
+    private func canonicalKey(_ game: AttendedGame) -> String {
+        let cal = Calendar(identifier: .gregorian)
+        let c = cal.dateComponents([.year, .month, .day], from: game.date)
+        let ids = [game.homeTeamId, game.awayTeamId].sorted().joined(separator: "-")
+        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)-\(ids)"
+    }
+
+    /// Check whether a game with this identity already exists in the diary.
+    func hasGame(day: Date, homeTeamId: String, awayTeamId: String) -> Bool {
+        let cal = Calendar(identifier: .gregorian)
+        let c = cal.dateComponents([.year, .month, .day], from: day)
+        let ids = [homeTeamId, awayTeamId].sorted().joined(separator: "-")
+        let key = "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)-\(ids)"
+        return games.contains { canonicalKey($0) == key }
+    }
+
     // MARK: Manual entries
 
-    func addManualGame(_ game: AttendedGame) {
+    /// Add a manually entered game. Rejects duplicates by canonical key.
+    /// Returns nil if a game with the same day + teams already exists.
+    @discardableResult
+    func addManualGame(_ game: AttendedGame) -> AttendedGame? {
+        let key = canonicalKey(game)
+        let existingKeys = Set(games.map(canonicalKey))
+        guard !existingKeys.contains(key) else { return nil }
+
         let inbox = ensureInbox(.manual, label: "Manual entries")
         var existing = gamesByInbox[inbox.id] ?? []
         existing.append(game)
@@ -151,22 +190,28 @@ final class DiaryStore {
         }
         if !hasCompletedOnboarding { hasCompletedOnboarding = true }
         save()
+        return game
     }
 
-    func removeManualGame(_ id: UUID) {
-        guard let inbox = connectedInboxes.first(where: { $0.provider == .manual }) else { return }
-        var existing = gamesByInbox[inbox.id] ?? []
-        existing.removeAll { $0.id == id }
-        if existing.isEmpty {
-            gamesByInbox.removeValue(forKey: inbox.id)
-            connectedInboxes.removeAll { $0.id == inbox.id }
-        } else {
-            gamesByInbox[inbox.id] = existing
-            if let idx = connectedInboxes.firstIndex(where: { $0.id == inbox.id }) {
-                connectedInboxes[idx].ticketsFound = existing.count
+    /// Delete a single game by ID regardless of source (shared or manual).
+    /// Updates the owning inbox's ticket count.
+    func deleteGame(_ id: UUID) {
+        for (inboxId, list) in gamesByInbox {
+            if list.contains(where: { $0.id == id }) {
+                var updated = list.filter { $0.id != id }
+                if updated.isEmpty {
+                    gamesByInbox.removeValue(forKey: inboxId)
+                    connectedInboxes.removeAll { $0.id == inboxId }
+                } else {
+                    gamesByInbox[inboxId] = updated
+                    if let idx = connectedInboxes.firstIndex(where: { $0.id == inboxId }) {
+                        connectedInboxes[idx].ticketsFound = updated.count
+                    }
+                }
+                save()
+                return
             }
         }
-        save()
     }
 
     /// Remove a source and its attributed games.
@@ -195,7 +240,8 @@ final class DiaryStore {
     // MARK: - Refresh (pull-to-refresh)
 
     /// Import any newly-shared tickets and refresh upcoming games whose final
-    /// score may now be available. Returns the number of newly imported games.
+    /// score may now be available. Also re-verifies unverified manual games.
+    /// Returns the number of newly imported games.
     @discardableResult
     func refresh() async -> Int {
         guard !isRefreshing else { return 0 }
@@ -205,6 +251,7 @@ final class DiaryStore {
         let imported = await importSharedTickets()
         await refreshUpcomingScores()
         await enrichExistingGames()
+        await reVerifyUnverifiedGames()
         return imported
     }
 
@@ -215,14 +262,18 @@ final class DiaryStore {
     /// schedule before being added — all on-device. A game with a future first
     /// pitch is added as `.upcoming` (no score yet); a finished game gets its
     /// real final score. Returns the number of newly imported games.
+    ///
+    /// Payloads that can't be confirmed are retried up to N attempts or M days;
+    /// after the window they're dropped and surfaced to the user.
     @discardableResult
     func importSharedTickets() async -> Int {
         let pending = SharedTicketStore.load()
         guard !pending.isEmpty else { return 0 }
 
         var newGames: [AttendedGame] = []
-        var existingKeys = Set(games.map(dayParkKey))
+        var existingKeys = Set(games.map(canonicalKey))
         var idsToRemove = Set<String>()
+        let now = Date.now
 
         for payload in pending {
             let message = EmailMessage(
@@ -232,18 +283,38 @@ final class DiaryStore {
                 snippet: payload.text,
                 internalDate: payload.receivedAt
             )
+
             guard let candidate = TicketEmailParser.detect(in: [message]).first else {
                 // No MLB matchup at all — drop it so we don't retry forever.
                 idsToRemove.insert(payload.id)
                 continue
             }
+
             guard let game = await buildGame(from: candidate) else {
-                // Detected a team but couldn't confirm against the schedule
-                // (e.g. offline). Keep it so a later refresh can retry.
+                // Detected a team but couldn't confirm against the schedule.
+                var tracking = importAttempts[payload.id] ?? (count: 0, firstSeen: now)
+                tracking.count += 1
+                importAttempts[payload.id] = tracking
+                let age = Calendar.current.dateComponents([.day], from: tracking.firstSeen, to: now).day ?? 0
+
+                if tracking.count >= Self.maxImportAttempts || age >= Self.maxImportAgeDays {
+                    // Drop it and surface to user.
+                    idsToRemove.insert(payload.id)
+                    droppedCandidates.append(DroppedCandidate(
+                        id: payload.id,
+                        sourceHint: payload.sourceHint,
+                        teamMlbId: candidate.teamMlbId,
+                        opponentMlbId: candidate.opponentMlbId,
+                        snippet: String(payload.text.prefix(200)),
+                        reason: "Couldn't confirm after \(tracking.count) attempts over \(age) days"
+                    ))
+                }
+                // Otherwise leave in the queue for next refresh.
                 continue
             }
+
             idsToRemove.insert(payload.id)
-            let key = dayParkKey(game)
+            let key = canonicalKey(game)
             guard !existingKeys.contains(key) else { continue }
             existingKeys.insert(key)
             newGames.append(game)
@@ -320,6 +391,51 @@ final class DiaryStore {
                 }
                 updated[index] = game.enriched(with: details)
                 didChange = true
+            }
+            if updated != list { gamesByInbox[inboxId] = updated }
+        }
+        if didChange { save() }
+    }
+
+    /// Re-verify unverified manual games. On pull-to-refresh, any unverified
+    /// manual entry gets checked against the real schedule. If found, it's
+    /// updated with the actual box score data and flipped to verified.
+    private func reVerifyUnverifiedGames() async {
+        var didChange = false
+        for (inboxId, list) in gamesByInbox {
+            var updated = list
+            for (index, game) in list.enumerated() where !game.verified && !game.isUpcoming {
+                let homeMlbId = game.homeTeam.mlbId
+                let awayMlbId = game.awayTeam.mlbId
+                guard homeMlbId > 0 else { continue }
+                guard let results = try? await MLBStatsService.shared.games(on: game.date, teamMlbId: homeMlbId) else {
+                    continue
+                }
+                let match = results.first {
+                    ($0.homeMlbId == homeMlbId && $0.awayMlbId == awayMlbId) ||
+                    ($0.awayMlbId == homeMlbId && $0.homeMlbId == awayMlbId)
+                }
+                if let match, match.isFinal {
+                    // Found the real game — update with verified data.
+                    if let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
+                        updated[index] = game.enriched(with: details)
+                    } else {
+                        updated[index] = AttendedGame(
+                            id: game.id, date: game.date, ballparkId: game.ballparkId,
+                            homeTeamId: game.homeTeamId, awayTeamId: game.awayTeamId,
+                            homeScore: match.homeScore, awayScore: match.awayScore,
+                            userRootedForHome: game.userRootedForHome,
+                            section: game.section, row: game.row, seat: game.seat,
+                            confirmation: game.confirmation,
+                            weather: game.weather, firstPitchTempF: game.firstPitchTempF,
+                            attendance: game.attendance, durationMinutes: game.durationMinutes,
+                            highlights: game.highlights, milestones: game.milestones,
+                            emailSubject: game.emailSubject, source: game.source,
+                            status: .completed, isVerified: true
+                        )
+                    }
+                    didChange = true
+                }
             }
             if updated != list { gamesByInbox[inboxId] = updated }
         }
@@ -412,10 +528,53 @@ final class DiaryStore {
         return dates
     }
 
-    private func dayParkKey(_ game: AttendedGame) -> String {
-        let cal = Calendar(identifier: .gregorian)
-        let c = cal.dateComponents([.year, .month, .day], from: game.date)
-        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)-\(game.ballparkId)"
+    // MARK: - Dedup on launch
+
+    /// One-time cleanup that collapses duplicate games by canonical key,
+    /// keeping the most-enriched copy (the one with highlights/milestones/attendance).
+    private func collapseDuplicates() {
+        var seen: [String: (inboxId: UUID, game: AttendedGame)] = [:]
+        var toRemove: [(UUID, UUID)] = [] // (inboxId, gameId)
+
+        for (inboxId, list) in gamesByInbox {
+            for game in list {
+                let key = canonicalKey(game)
+                if let existing = seen[key] {
+                    // Keep the most-enriched copy
+                    let keepExisting = existing.game.isEnriched || (!existing.game.isEnriched && !game.isEnriched)
+                    if !keepExisting {
+                        // The new game is richer — remove the old one
+                        toRemove.append((existing.inboxId, existing.game.id))
+                        seen[key] = (inboxId, game)
+                    } else {
+                        toRemove.append((inboxId, game.id))
+                    }
+                } else {
+                    seen[key] = (inboxId, game)
+                }
+            }
+        }
+
+        guard !toRemove.isEmpty else { return }
+
+        for (inboxId, gameId) in toRemove {
+            if var list = gamesByInbox[inboxId] {
+                list.removeAll { $0.id == gameId }
+                if list.isEmpty {
+                    gamesByInbox.removeValue(forKey: inboxId)
+                } else {
+                    gamesByInbox[inboxId] = list
+                }
+            }
+        }
+
+        // Refresh inbox counts
+        for (index, inbox) in connectedInboxes.enumerated() {
+            connectedInboxes[index].ticketsFound = gamesByInbox[inbox.id]?.count ?? 0
+        }
+        connectedInboxes.removeAll { gamesByInbox[$0.id] == nil }
+
+        save()
     }
 
     // MARK: - Persistence
@@ -427,6 +586,7 @@ final class DiaryStore {
         var hasAcceptedTerms: Bool
         var inboxes: [ConnectedInbox]
         var gamesByInbox: [String: [AttendedGame]]
+        var droppedCandidates: [DroppedCandidate]
     }
 
     private func save() {
@@ -436,7 +596,8 @@ final class DiaryStore {
             hasCompletedOnboarding: hasCompletedOnboarding,
             hasAcceptedTerms: hasAcceptedTerms,
             inboxes: connectedInboxes,
-            gamesByInbox: Dictionary(uniqueKeysWithValues: gamesByInbox.map { ($0.key.uuidString, $0.value) })
+            gamesByInbox: Dictionary(uniqueKeysWithValues: gamesByInbox.map { ($0.key.uuidString, $0.value) }),
+            droppedCandidates: droppedCandidates
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: storageKey)
@@ -455,5 +616,17 @@ final class DiaryStore {
         gamesByInbox = Dictionary(uniqueKeysWithValues: snapshot.gamesByInbox.compactMap { key, value in
             UUID(uuidString: key).map { ($0, value) }
         })
+        droppedCandidates = snapshot.droppedCandidates
     }
+}
+
+/// A candidate that couldn't be confirmed and was dropped after the retry window.
+/// Surfaced to the user so they can manually add it instead of it silently vanishing.
+struct DroppedCandidate: Identifiable, Codable, Hashable {
+    let id: String
+    let sourceHint: String
+    let teamMlbId: Int
+    let opponentMlbId: Int?
+    let snippet: String
+    let reason: String
 }

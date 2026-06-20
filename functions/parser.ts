@@ -5,6 +5,9 @@
 // date(s). It is intentionally conservative: a candidate is only emitted when
 // at least one team can be identified, so the app can confirm it against the
 // real MLB schedule downstream.
+//
+// KEPT IN SYNC with ios/BallparkDiary/Services/TicketEmailParser.swift —
+// every logic change must be applied to both files.
 
 export interface DetectedCandidate {
   id: string;
@@ -34,7 +37,10 @@ export function detectCandidate(input: {
   const primary = teams[0];
   if (primary === undefined) return null;
 
-  const dates = dedupedByDay([...extractDates(haystack), input.receivedAt]);
+  // NEVER use input.receivedAt — only dates actually in the ticket text.
+  const dates = dedupedByDay(extractDates(haystack));
+  if (dates.length === 0) return null;
+
   const seats = extractSeatInfo(haystack);
 
   return {
@@ -58,19 +64,29 @@ function firstLine(text: string): string {
 
 // MARK: - Team detection
 
-/** Ordered, de-duplicated MLB team ids mentioned in the text. */
+/** Escape a string for use inside a RegExp literal. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Ordered, de-duplicated MLB team ids mentioned in the text.
+ * Uses strict word-boundary (`\b`) matching — no substring fallback — so
+ * "hundreds" won't match Reds, "helmets" won't match Mets, etc.
+ */
 function matchedTeams(text: string): number[] {
-  const lower = ` ${text.toLowerCase().replace(/\s+/g, " ")} `;
+  const lower = text.toLowerCase().replace(/\s+/g, " ");
   const hits: { index: number; id: number }[] = [];
+
   for (const [keyword, id] of TEAM_KEYWORDS) {
-    const padded = lower.indexOf(` ${keyword} `);
-    if (padded >= 0) {
-      hits.push({ index: padded, id });
-      continue;
+    const escaped = escapeRegex(keyword);
+    const regex = new RegExp(`\\b${escaped}\\b`, "i");
+    const match = regex.exec(lower);
+    if (match) {
+      hits.push({ index: match.index, id });
     }
-    const loose = lower.indexOf(keyword);
-    if (loose >= 0) hits.push({ index: loose, id });
   }
+
   hits.sort((a, b) => a.index - b.index);
   const seen = new Set<number>();
   const result: number[] = [];
@@ -90,45 +106,93 @@ const MONTHS: Record<string, number> = {
   september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
 };
 
-function extractDates(text: string): Date[] {
+/** Days in each month (non-leap). Used to validate bare numeric M/D. */
+const DAYS_IN_MONTH = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function extractDates(rawText: string): Date[] {
+  // Strip seat/section/row ranges so "Seats 11-12" isn't parsed as Nov 12.
+  const text = rawText.replace(
+    /(?:Section|Sec|Sect|Row|Seats?|Seat)\s*[:-]?\s*\d+\s*[-/]\s*\d+/gi,
+    "",
+  );
+
   const now = Date.now();
   const horizon = now + 1000 * 60 * 60 * 24 * 2; // allow up to 2 days ahead
-  const found: Date[] = [];
-  const push = (y: number, m: number, d: number) => {
+
+  interface DateHint {
+    y: number;
+    m: number;
+    d: number;
+    hasExplicitYear: boolean;
+  }
+
+  const found: DateHint[] = [];
+  const seen = new Set<string>();
+
+  const push = (y: number, m: number, d: number, hasExplicitYear: boolean) => {
     if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1980 || y > 2100) return;
-    const dt = new Date(Date.UTC(y, m - 1, d, 19, 0, 0)); // ~game time, UTC-ish
-    if (dt.getTime() <= horizon) found.push(dt);
+    // Validate calendar date
+    if (d > (DAYS_IN_MONTH[m] ?? 31)) return;
+    const key = `${y}-${m}-${d}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const dt = new Date(Date.UTC(y, m - 1, d, 19, 0, 0));
+    if (dt.getTime() <= horizon) {
+      found.push({ y, m, d, hasExplicitYear });
+    }
   };
 
   // "Month DD, YYYY" / "Mon DD YYYY"
   const monthName = /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/gi;
   for (const m of text.matchAll(monthName)) {
     const month = MONTHS[m[1].toLowerCase()];
-    if (month) push(Number(m[3]), month, Number(m[2]));
+    if (month) push(Number(m[3]), month, Number(m[2]), true);
   }
 
   // "DD Month YYYY"
   const dayMonth = /\b(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?,?\s+(\d{4})\b/gi;
   for (const m of text.matchAll(dayMonth)) {
     const month = MONTHS[m[2].toLowerCase()];
-    if (month) push(Number(m[3]), month, Number(m[1]));
+    if (month) push(Number(m[3]), month, Number(m[1]), true);
   }
 
   // "MM/DD/YYYY" or "MM-DD-YYYY"
-  const numeric = /\b(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})\b/g;
-  for (const m of text.matchAll(numeric)) {
+  const numeric4 = /\b(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})\b/g;
+  for (const m of text.matchAll(numeric4)) {
     let year = Number(m[3]);
     if (year < 100) year += 2000;
-    push(year, Number(m[1]), Number(m[2]));
+    push(year, Number(m[1]), Number(m[2]), true);
   }
 
   // "YYYY-MM-DD"
   const iso = /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g;
   for (const m of text.matchAll(iso)) {
-    push(Number(m[1]), Number(m[2]), Number(m[3]));
+    push(Number(m[1]), Number(m[2]), Number(m[3]), true);
   }
 
-  return found;
+  // Bare numeric "M/D" or "M-D" — only accepted when no better-qualified
+  // date (with explicit year or spelled-out month) exists.
+  const hasQualified = found.some((f) => f.hasExplicitYear);
+  if (!hasQualified) {
+    const thisYear = new Date().getUTCFullYear();
+    const bareNumeric = /\b(\d{1,2})[/-](\d{1,2})\b/g;
+    for (const m of text.matchAll(bareNumeric)) {
+      const month = Number(m[1]);
+      const day = Number(m[2]);
+      if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+      if (day > (DAYS_IN_MONTH[month] ?? 31)) continue;
+      // Try current year; if it's in the past, that's the most likely season.
+      const dt = new Date(Date.UTC(thisYear, month - 1, day, 19, 0, 0));
+      if (dt.getTime() <= now) {
+        push(thisYear, month, day, false);
+      } else {
+        // Try previous year
+        push(thisYear - 1, month, day, false);
+      }
+    }
+  }
+
+  return found.map((f) => new Date(Date.UTC(f.y, f.m - 1, f.d, 19, 0, 0)));
 }
 
 function dedupedByDay(dates: Date[]): Date[] {
@@ -154,17 +218,59 @@ interface SeatInfo {
 
 /** Pull seat location and confirmation number out of ticket text. */
 function extractSeatInfo(text: string): SeatInfo {
+  const trimPunct = (s: string): string =>
+    s.trim().replace(/^[,\s.;|]+|[,\s.;|]+$/g, "");
+
   const first = (pattern: RegExp): string => {
     const m = text.match(pattern);
-    return m?.[1]?.trim() ?? "";
+    return m?.[1] ? trimPunct(m[1]) : "";
   };
 
-  const section = first(/\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)/i);
+  // Section: "Section 123", "Sec 123", "Sect 123", "SEC 123"
+  // Also area labels without "Section": FIELD BOX 42, GRANDSTAND 5, etc.
+  let section = first(/\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)/i);
+  if (!section) {
+    const areaMatch = text.match(
+      /\b(FIELD\s*BOX|GRANDSTAND|BLEACHERS?|PAVILION|TERRACE|RESERVE|CLUB\s*LEVEL|UPPER\s*LEVEL|LOWER\s*LEVEL|MEZZANINE|LOGE|UPPER\s*RESERVE)\s*[:-]?\s*(\S+)/i,
+    );
+    if (areaMatch) {
+      section = areaMatch[0].trim();
+    }
+  }
+
   const row = first(/\bRow\s*[:-]?\s*(\S+)/i);
   const seat = first(/\bSeats?\s*[:-]?\s*(\S+)/i);
-  const confirmation = first(/\b(?:Conf(?:irmation)?|Order)\s*(?:#|No\.?|Number:?)?\s*[:-]?\s*([A-Za-z0-9][A-Za-z0-9-]{2,20})/i) || null;
+  const confirmation = validatedConfirmation(text);
 
   return { section, row, seat, confirmation };
+}
+
+/**
+ * Confirmation / order number extraction with validation:
+ * - Must contain at least one digit
+ * - 4–20 characters of [A-Za-z0-9-]
+ * - Reject plain English words (Total, Summary, Date, Details, etc.)
+ */
+function validatedConfirmation(text: string): string | null {
+  const pattern = /\b(?:Conf(?:irmation)?|Order)\s*(?:#|No\.?|Number:?)?\s*[:-]?\s*([A-Za-z0-9][A-Za-z0-9-]{3,19})\b/i;
+  const m = text.match(pattern);
+  if (!m?.[1]) return null;
+
+  let raw = m[1].trim();
+  raw = raw.replace(/^[,\s.;|]+|[,\s.;|]+$/g, "");
+
+  // Must contain at least one digit
+  if (!/\d/.test(raw)) return null;
+
+  // Reject plain English words that appear in ticket headers
+  const rejected = new Set([
+    "total", "summary", "date", "details", "confirmation", "status", "number",
+    "order", "ticket", "event", "section", "row", "seat", "price", "subtotal",
+    "tax", "fee", "delivery", "payment", "receipt", "amount", "charge",
+  ]);
+  if (rejected.has(raw.toLowerCase())) return null;
+
+  return raw;
 }
 
 // MARK: - Source detection

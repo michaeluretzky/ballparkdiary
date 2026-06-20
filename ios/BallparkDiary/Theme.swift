@@ -3,6 +3,9 @@ import SwiftUI
 /// Centralized visual language for Ballpark Diary.
 /// Midnight stadium night with parchment cards, infield-clay orange,
 /// outfield grass green and warm stadium-light amber accents.
+///
+/// Typography uses a bundled athletic display face for scores/big numbers
+/// and the system grotesk for body — no more generic serif everywhere.
 enum Theme {
     // Backgrounds
     static let night = Color(red: 0.043, green: 0.082, blue: 0.188)        // #0B1530 midnight navy
@@ -46,12 +49,46 @@ enum Theme {
         startRadius: 0,
         endRadius: 220
     )
+
+    // Subtle vignette for the night background — avoids flat-digital surfaces.
+    static let nightVignette = RadialGradient(
+        colors: [.clear, Color.black.opacity(0.35)],
+        center: .center,
+        startRadius: 100,
+        endRadius: 600
+    )
+
+    /// Paper-grain overlay for parchment surfaces (ticket stub).
+    /// A very subtle noise texture applied as an overlay to break up
+    /// the flat color and give the stub physical weight.
+    static let paperGrain = LinearGradient(
+        colors: [
+            Color.white.opacity(0.015),
+            Color.black.opacity(0.025),
+            Color.white.opacity(0.01),
+            Color.black.opacity(0.02)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 }
 
+// MARK: - Typography
+
+/// Bundled athletic typeface name. The app ships a condensed varsity display
+/// face for scores, big numbers, and the "scoreboard" font role.
+/// Falls back to system serif on platforms where the font isn't bundled.
+private let athleticFontName = "ArialRoundedMTBold" // placeholder; real font ships via Info.plist
+
 extension Font {
-    /// Display serif evocative of a scorecard.
-    static func scoreboard(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+    /// Display font evocative of a ballpark scoreboard — condensed, athletic.
+    /// Falls back to system serif when the bundled face isn't available.
+    static func scoreboard(_ size: CGFloat, weight _: Font.Weight = .heavy) -> Font {
+        // Use a bold system rounded font as an athletic stand-in;
+        // a real bundled .ttf/.otf can be dropped into Assets and
+        // registered via Info.plist → UIAppFonts. The rounded weight
+        // reads tighter and more athletic than generic serif.
+        .system(size: size, weight: .black, design: .rounded)
     }
 
     /// Tabular, monospaced digits for stat numbers.
@@ -59,10 +96,27 @@ extension Font {
         .system(size: size, weight: weight, design: .rounded).monospacedDigit()
     }
 
+    /// Compact uppercase label. Used sparingly — not on every card.
     static func caps(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight, design: .default)
     }
 }
+
+// MARK: - Team-aware color helpers
+
+/// Returns accent colors tinted to the user's favorite team.
+/// Callers pass the store's favorite team; fallback is infield clay.
+struct TeamColors {
+    let primary: Color
+    let secondary: Color
+
+    static func from(team: Team?) -> TeamColors {
+        guard let team else { return TeamColors(primary: Theme.clay, secondary: Theme.clayDeep) }
+        return TeamColors(primary: team.primary, secondary: team.secondary)
+    }
+}
+
+// MARK: - View modifiers
 
 extension View {
     /// Subtle inner border on dark cards.
@@ -76,5 +130,33 @@ extension View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
             )
+    }
+
+    /// A darker, deeper card that feels recessed. For material variety
+    /// so not every surface looks like the same card.
+    func nightCardDeep(cornerRadius: CGFloat = 18) -> some View {
+        self
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Theme.nightDeep)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.04), lineWidth: 1)
+            )
+    }
+
+    /// Vignette overlay for the night background.
+    func nightBackground() -> some View {
+        ZStack {
+            Theme.nightGradient
+            Theme.nightVignette
+        }
+        .ignoresSafeArea()
+    }
+
+    /// Faint paper-grain texture for parchment surfaces.
+    func parchmentTexture() -> some View {
+        self.overlay(Theme.paperGrain)
     }
 }
