@@ -23,6 +23,7 @@ struct RootView: View {
 }
 
 struct MainTabsView: View {
+    @Environment(DiaryStore.self) private var store
     @State private var selection: Tab = .map
 
     enum Tab: Hashable { case map, diary, stats, inboxes }
@@ -46,5 +47,16 @@ struct MainTabsView: View {
                 .tag(Tab.inboxes)
         }
         .tint(Theme.clay)
+        .onChange(of: store.requestedTab) { _, newValue in
+            guard let tab = newValue else { return }
+            switch tab {
+            case "diary": selection = .diary
+            case "map": selection = .map
+            case "stats": selection = .stats
+            case "inboxes": selection = .inboxes
+            default: break
+            }
+            store.requestedTab = nil
+        }
     }
 }

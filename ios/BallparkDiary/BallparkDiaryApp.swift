@@ -27,8 +27,11 @@ struct BallparkDiaryApp: App {
                     await store.refresh()
                 }
                 .onOpenURL { _ in
-                    // Opened from share extension — refresh to import.
-                    Task { await store.refresh() }
+                    // Opened from share extension — refresh then switch to Diary tab.
+                    Task {
+                        await store.refresh()
+                        store.requestedTab = "diary"
+                    }
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {

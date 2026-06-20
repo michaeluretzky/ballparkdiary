@@ -231,6 +231,10 @@ struct ShareView: View {
         #if canImport(UIKit)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         #endif
+
+        // Auto-open the main app after a short confirmation pause.
+        try? await Task.sleep(for: .seconds(1.2))
+        openApp()
     }
 
     /// Quick visual summary of detected teams for the confirmation screen.

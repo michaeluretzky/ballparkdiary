@@ -31,6 +31,9 @@ final class DiaryStore {
     /// Games that couldn't be confirmed and were dropped — surfaced to user.
     var droppedCandidates: [DroppedCandidate] = []
 
+    /// Non-nil when a deep-link requests a tab switch. Observed by MainTabsView.
+    var requestedTab: String? = nil
+
     /// Local retry tracking for shared ticket payloads (in-memory only).
     private var importAttempts: [String: (count: Int, firstSeen: Date)] = [:]
 
