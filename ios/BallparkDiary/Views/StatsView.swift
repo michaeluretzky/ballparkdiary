@@ -547,9 +547,9 @@ private struct LuckyCharmCard: View {
     private func charmBlurb(_ charm: (wins: Int, losses: Int, team: Team)) -> String {
         let total = charm.wins + charm.losses
         let pct = total > 0 ? Int(Double(charm.wins) / Double(total) * 100) : 0
-        if pct >= 65 { return "A \(pct)% win rate when you're in the building. You're their good-luck charm." }
-        if pct >= 45 { return "Basically a coin flip with you watching — \(pct)% wins." }
-        return "\(pct)% wins when you attend. The baseball gods owe you one."
+        if pct >= 65 { return "\(pct)% win rate when you're in the building." }
+        if pct >= 45 { return "\(pct)% wins — coin flip when you show up." }
+        return "\(pct)% wins. The baseball gods owe you."
     }
 }
 

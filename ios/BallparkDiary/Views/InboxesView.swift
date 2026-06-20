@@ -269,24 +269,28 @@ private struct InboxRow: View {
 }
 
 private struct EmptyInboxesHint: View {
+    @State private var animate: Bool = false
+
     var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "tray")
-                .font(.system(size: 28, weight: .regular))
-                .foregroundStyle(Theme.textMuted)
-            Text("No games yet")
-                .font(.system(size: 14, weight: .semibold))
+        VStack(spacing: 10) {
+            BaseballMark(size: 48)
+                .opacity(animate ? 0.55 : 0.35)
+                .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: animate)
+            Text("Nothing here yet")
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
-            Text("Share a ticket in or add one by hand to begin.")
-                .font(.system(size: 12))
+            Text("Share a ticket or add a game by hand to get started.")
+                .font(.system(size: 13))
                 .foregroundStyle(Theme.textMuted)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        .padding(.vertical, 28)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Theme.card.opacity(0.6))
+                .fill(Theme.card.opacity(0.5))
         )
+        .onAppear { animate = true }
     }
 }
 

@@ -261,7 +261,7 @@ extension AttendedGame {
                     title: "\(ordinal(total)) Career Home Run",
                     category: .homeRun, stat: "HR #\(total)",
                     detail: hr.description + grandSlamNote,
-                    context: "You were in the stands for \(hr.batter)'s \(ordinal(total)) career home run — one of the rarest milestones in baseball.",
+                    context: "You were there for \(hr.batter)'s \(ordinal(total)) career home run.",
                     inning: inning
                 ))
             } else if let mark = famousHomeRunMarks.first(where: { $0 > total && $0 - total <= 10 }) {
@@ -309,8 +309,8 @@ extension AttendedGame {
                     stat: pieces,
                     detail: "\(line.name) went the distance: \(pieces).",
                     context: maddux
-                        ? "A “Maddux” is a complete-game shutout on fewer than 100 pitches — one of the rarest, most efficient performances a pitcher can deliver. You watched it happen."
-                        : "A complete game is a vanishing art in modern baseball. You were there to see every out.",
+                        ? "A Maddux: a complete-game shutout on under 100 pitches. One of the rarest feats in baseball."
+                        : "A complete game is rare these days. You saw every pitch.",
                     inning: nil
                 ))
             } else if line.strikeOuts >= 15 {
@@ -320,7 +320,7 @@ extension AttendedGame {
                     category: .strikeouts,
                     stat: "\(line.strikeOuts) K in \(line.inningsPitched) IP",
                     detail: "\(line.name) racked up \(line.strikeOuts) strikeouts.",
-                    context: "A 15-strikeout game is elite, dominant pitching. You saw it in person.",
+                    context: "15 strikeouts in a single game is elite. You were in the building.",
                     inning: nil
                 ))
             }
