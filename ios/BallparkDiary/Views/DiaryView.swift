@@ -283,7 +283,7 @@ struct GameCard: View {
             Text(game.date.formatted(.dateTime.day()))
                 .font(.stat(20, weight: .heavy))
                 .foregroundStyle(Theme.textPrimary)
-            Text("'\(String(Calendar.current.component(.year, from: game.date)).suffix(2))")
+            Text(String(Calendar.current.component(.year, from: game.date)))
                 .font(.stat(11, weight: .semibold))
                 .foregroundStyle(Theme.textMuted)
         }
