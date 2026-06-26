@@ -26,7 +26,7 @@ struct MainTabsView: View {
     @Environment(DiaryStore.self) private var store
     @State private var selection: Tab = .map
 
-    enum Tab: Hashable { case map, diary, stats, inboxes }
+    enum Tab: Hashable { case map, diary, stats, inboxes, profile }
 
     var body: some View {
         TabView(selection: $selection) {
@@ -45,6 +45,10 @@ struct MainTabsView: View {
             InboxesView()
                 .tabItem { Label("Sources", systemImage: "tray.full.fill") }
                 .tag(Tab.inboxes)
+
+            ProfileView()
+                .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
+                .tag(Tab.profile)
         }
         .tint(Theme.clay)
         .onChange(of: store.requestedTab) { _, newValue in
@@ -53,7 +57,7 @@ struct MainTabsView: View {
             case "diary": selection = .diary
             case "map": selection = .map
             case "stats": selection = .stats
-            case "inboxes": selection = .inboxes
+            case "profile": selection = .profile
             default: break
             }
             store.requestedTab = nil

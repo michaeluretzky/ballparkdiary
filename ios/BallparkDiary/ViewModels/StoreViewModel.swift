@@ -2,9 +2,16 @@ import Foundation
 import Observation
 import RevenueCat
 
-/// Central subscription state for Ballpark Diary Pro ($9.99/yr).
+/// Central entitlement state for Ballpark Diary Pro ($9.99 lifetime).
 /// Owns the current offering, purchase/restore flows, and the live
 /// `premium` entitlement status sourced from RevenueCat's customer-info stream.
+///
+/// To grant Pro access to specific users without purchase, create a Customer
+/// in the RevenueCat dashboard (RevenueCat → Customers → + New) and grant the
+/// "premium" entitlement. The user's App User ID can be found in Xcode logs
+/// (search for "Purchases" — the ID is logged on configure). You can also
+/// create Offering Overrides to give specific customers a free or discounted
+/// price for the lifetime package.
 @Observable
 @MainActor
 final class StoreViewModel {

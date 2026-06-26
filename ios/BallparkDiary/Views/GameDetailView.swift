@@ -5,9 +5,11 @@ import UIKit
 /// ballpark aerial, seat perspective, milestones, highlights, and game facts.
 struct GameDetailView: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(StoreViewModel.self) private var storeKit
     let game: AttendedGame
     @State private var shareImage: Image? = nil
     @State private var showDeleteConfirm: Bool = false
+    @State private var showPaywall: Bool = false
 
     var body: some View {
         ScrollView {
@@ -23,8 +25,13 @@ struct GameDetailView: View {
                     .padding(.horizontal, 16)
 
                 if !game.milestones.isEmpty {
-                    MilestonesPanel(game: game)
-                        .padding(.horizontal, 16)
+                    if storeKit.isPremium {
+                        MilestonesPanel(game: game)
+                            .padding(.horizontal, 16)
+                    } else {
+                        LockedMilestonesPanel(game: game, onUnlock: { showPaywall = true })
+                            .padding(.horizontal, 16)
+                    }
                 }
 
                 if !game.highlights.isEmpty {
@@ -56,11 +63,23 @@ struct GameDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
                     if let shareImage {
-                        ShareLink(
-                            item: shareImage,
-                            preview: SharePreview("\(game.awayTeam.abbreviation) @ \(game.homeTeam.abbreviation)", image: shareImage)
-                        ) {
-                            Image(systemName: "square.and.arrow.up")
+                        if storeKit.isPremium {
+                            ShareLink(
+                                item: shareImage,
+                                preview: SharePreview("\(game.awayTeam.abbreviation) @ \(game.homeTeam.abbreviation)", image: shareImage)
+                            ) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        } else {
+                            Button { showPaywall = true } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 14))
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 9))
+                                }
+                                .foregroundStyle(Theme.lights)
+                            }
                         }
                     }
                     Button {
@@ -79,6 +98,9 @@ struct GameDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This won't affect the original ticket or email.")
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView(store: storeKit)
         }
         .task { renderShareCard() }
     }
@@ -706,6 +728,56 @@ private struct Fact: View {
         .background(
             RoundedRectangle(cornerRadius: 10).fill(Theme.cardElevated)
         )
+    }
+}
+
+// MARK: - Locked milestones (pro gate)
+
+private struct LockedMilestonesPanel: View {
+    let game: AttendedGame
+    let onUnlock: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textMuted)
+                Text("\(game.milestones.count) Milestone\(game.milestones.count == 1 ? "" : "s")")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textMuted)
+                Spacer()
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+            }
+
+            Button(action: onUnlock) {
+                HStack(spacing: 6) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Unlock with Pro to see player milestones")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(Theme.lights)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.lights.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Theme.lights.opacity(0.3), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .nightCardDeep()
     }
 }
 

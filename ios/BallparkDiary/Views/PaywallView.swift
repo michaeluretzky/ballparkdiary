@@ -2,7 +2,7 @@ import SwiftUI
 import RevenueCat
 
 /// Ballpark Diary Pro paywall. Stadium-night styling matching the rest of the
-/// app, a list of Pro perks, the yearly package from RevenueCat's current
+/// app, a list of Pro perks, the lifetime package from RevenueCat's current
 /// offering, and a required Restore Purchases action.
 struct PaywallView: View {
     var store: StoreViewModel
@@ -126,22 +126,17 @@ struct PaywallView: View {
             ProgressView()
                 .tint(Theme.clay)
                 .padding(.vertical, 30)
-        } else if let pkg = yearlyPackage {
+        } else if let pkg = lifetimePackage {
             VStack(spacing: 12) {
                 Button {
                     Task { await store.purchase(package: pkg) }
                 } label: {
                     VStack(spacing: 4) {
-                        Text("Unlock Pro")
+                        Text("Unlock Pro — One-Time Purchase")
                             .font(.system(size: 17, weight: .heavy))
-                        Text("\(pkg.storeProduct.localizedPriceString) / year · cancel anytime")
+                        Text("\(pkg.storeProduct.localizedPriceString) · lifetime access")
                             .font(.system(size: 12, weight: .medium))
                             .opacity(0.9)
-                        if let intro = pkg.storeProduct.introductoryDiscount {
-                            Text("Start with \(intro.subscriptionPeriod.value)-\(unitLabel(intro.subscriptionPeriod.unit)) free trial")
-                                .font(.system(size: 11, weight: .semibold))
-                                .opacity(0.95)
-                        }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
@@ -178,26 +173,16 @@ struct PaywallView: View {
     }
 
     private var legalFooter: some View {
-        Text("Payment is charged to your Apple ID. Subscription renews automatically unless canceled at least 24 hours before the period ends. Manage in Settings.")
+        Text("One-time purchase. Not a subscription — pay once, keep forever. Restore on any device signed into your Apple ID.")
             .font(.system(size: 10))
             .foregroundStyle(Theme.textMuted)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 12)
     }
 
-    private var yearlyPackage: Package? {
+    private var lifetimePackage: Package? {
         guard let current = store.offerings?.current else { return nil }
-        return current.annual ?? current.availablePackages.first
-    }
-
-    private func unitLabel(_ unit: SubscriptionPeriod.Unit) -> String {
-        switch unit {
-        case .day: return "day"
-        case .week: return "week"
-        case .month: return "month"
-        case .year: return "year"
-        @unknown default: return "period"
-        }
+        return current.lifetime ?? current.availablePackages.first
     }
 }
 

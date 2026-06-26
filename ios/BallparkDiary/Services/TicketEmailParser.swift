@@ -113,9 +113,13 @@ nonisolated enum TicketEmailParser {
         let confirmation: String?
     }
 
-    /// Pull seat location and confirmation number out of ticket text using
-    /// the same patterns that ticketing platforms (Ticketmaster, StubHub,
-    /// SeatGeek, MLB Ballpark) use in their receipts.
+    /// Pull seat location and confirmation number out of ticket text.
+    /// Robust to OCR artifacts, multi-line layouts, and varied ticket-platform
+    /// formatting (Ticketmaster, StubHub, SeatGeek, MLB Ballpark, etc.).
+    ///
+    /// Strategy: first try line-by-line scanning (handles multi-line OCR where
+    /// Section/Row/Seat appear on separate lines), then fall back to regex
+    /// scanning for single-line ticket summaries.
     private static func extractSeatInfo(from text: String) -> SeatInfo {
         func firstMatch(_ pattern: String, group: Int = 1) -> String? {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
@@ -123,29 +127,104 @@ nonisolated enum TicketEmailParser {
             guard let m = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
             if m.range(at: group).location == NSNotFound { return nil }
             let raw = ns.substring(with: m.range(at: group))
-            // Trim leading/trailing punctuation and whitespace
             return raw.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         }
 
-        // Section: "Section 123", "Sec 123", "Sect 123", "SEC 123"
-        // Also area labels without "Section": FIELD BOX 42, GRANDSTAND 5, etc.
-        var section = firstMatch(#"\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)"#) ?? ""
+        // --- Line-by-line scanning (primary) ---
+        // Handles OCR output where "SECTION 160", "ROW 7", "SEAT 3" are on
+        // separate lines, plus common OCR misreads (I→1, O→0, etc.).
+        let lines = text.components(separatedBy: .newlines)
+        var section = "", row = "", seat = ""
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+
+            // Try explicit keywords first
+            if let val = seatFieldValue(in: trimmed, keywords: ["Section", "Sec", "Sect"]) {
+                if section.isEmpty { section = val }
+            } else if let val = seatFieldValue(in: trimmed, keywords: ["Row"]) {
+                if row.isEmpty { row = val }
+            } else if let val = seatFieldValue(in: trimmed, keywords: ["Seat", "Seats"]) {
+                // "Seats 11-12" → take the first seat number
+                if seat.isEmpty { seat = val.components(separatedBy: CharacterSet(charactersIn: "-–/,")).first?.trimmingCharacters(in: .whitespaces) ?? val }
+            }
+        }
+
+        // --- Regex fallback for single-line tickets ---
         if section.isEmpty {
-            section = firstMatch(#"\b(FIELD\s*BOX|GRANDSTAND|BLEACHERS?|PAVILION|TERRACE|RESERVE|CLUB\s*LEVEL|UPPER\s*LEVEL|LOWER\s*LEVEL|MEZZANINE|LOGE|UPPER\s*RESERVE)\s*[:-]?\s*(\S+)"#, group: 0) ?? ""
+            section = firstMatch(#"\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)"#) ?? ""
+        }
+        // Area labels without "Section": FIELD BOX 42, GRANDSTAND 5, etc.
+        if section.isEmpty {
+            section = firstMatch(#"\b(FIELD\s*BOX|GRANDSTAND|BLEACHERS?|PAVILION|TERRACE|RESERVE|CLUB\s*LEVEL|UPPER\s*LEVEL|LOWER\s*LEVEL|MEZZANINE|LOGE|UPPER\s*RESERVE|OUTFIELD\s*RESERVE|CENTER\s*FIELD|RIGHT\s*FIELD|LEFT\s*FIELD|CORNER|INFIELD\s*BOX|BASELINE\s*BOX|HOME\s*PLATE\s*BOX)\s*[:-]?\s*(\S+)"#, group: 0) ?? ""
             if !section.isEmpty { section = section.trimmingCharacters(in: .whitespaces) }
         }
 
-        // Row: "Row 4", "Row: 4", "ROW A"
-        let row = firstMatch(#"\bRow\s*[:-]?\s*(\S+)"#) ?? ""
+        if row.isEmpty {
+            row = firstMatch(#"\bRow\s*[:-]?\s*(\S+)"#) ?? ""
+        }
+        if seat.isEmpty {
+            let raw = firstMatch(#"\bSeats?\s*[:-]?\s*(\S+)"#) ?? ""
+            if !raw.isEmpty {
+                seat = raw.components(separatedBy: CharacterSet(charactersIn: "-–/,")).first?.trimmingCharacters(in: .whitespaces) ?? raw
+            }
+        }
 
-        // Seat: "Seat 12", "Seat: 12", "Seats 11-12" — just grab the first number
-        let seat = firstMatch(#"\bSeats?\s*[:-]?\s*(\S+)"#) ?? ""
+        // --- OCR artifact cleanup ---
+        // Common Vision OCR misreads: capital I → 1, letter O → 0, lowercase l → 1
+        section = cleanOCRNumeric(section)
+        row = cleanOCRNumeric(row)
+        seat = cleanOCRNumeric(seat)
 
         // Confirmation: must contain ≥1 digit, be 4–20 alphanumeric + dash,
         // and NOT be a plain English word from the reject list.
         let confirmation = validatedConfirmation(from: text)
 
         return SeatInfo(section: section, row: row, seat: seat, confirmation: confirmation)
+    }
+
+    /// Extract the value following a seat-location keyword on a single line.
+    /// e.g. "SECTION 160" → "160", "Row: 7" → "7", "SEAT 3" → "3".
+    /// Handles optional colon/hyphen separators and common OCR noise.
+    private static func seatFieldValue(in line: String, keywords: [String]) -> String? {
+        let pattern = keywords.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
+        guard let regex = try? NSRegularExpression(
+            pattern: "\\b(?:\\(pattern\\))\\s*[:-]?\\s*(\\S+)",
+            options: [.caseInsensitive]
+        ) else { return nil }
+        let ns = line as NSString
+        guard let m = regex.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)),
+              m.range(at: 1).location != NSNotFound else { return nil }
+        return ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .punctuationCharacters)
+    }
+
+    /// Fix common Vision OCR misreads in numeric fields.
+    /// Capital I → 1, letter O → 0 (when surrounded by digits), lowercase l → 1.
+    private static func cleanOCRNumeric(_ value: String) -> String {
+        guard !value.isEmpty else { return value }
+        // Only clean if the value looks like it should be numeric (contains digits
+        // or is a common OCR misread like "IO7" instead of "107").
+        let hasDigit = value.contains { $0.isNumber }
+        let hasLetterInNumericContext = value.contains { c in
+            c == "I" || c == "O" || c == "l" || c == "S"
+        }
+        guard hasDigit || hasLetterInNumericContext else { return value }
+
+        var cleaned = value
+        // Replace capital I with 1 when adjacent to digits
+        if let r = try? NSRegularExpression(pattern: "(?<=\\d)I|I(?=\\d)") {
+            cleaned = r.stringByReplacingMatches(in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned), withTemplate: "1")
+        }
+        // Replace letter O with 0 when adjacent to digits
+        if let r = try? NSRegularExpression(pattern: "(?<=\\d)O|O(?=\\d)") {
+            cleaned = r.stringByReplacingMatches(in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned), withTemplate: "0")
+        }
+        // Replace lowercase l with 1 when adjacent to digits
+        if let r = try? NSRegularExpression(pattern: "(?<=\\d)l|l(?=\\d)") {
+            cleaned = r.stringByReplacingMatches(in: cleaned, range: NSRange(cleaned.startIndex..., in: cleaned), withTemplate: "1")
+        }
+        return cleaned
     }
 
     /// Confirmation / order number extraction with validation:

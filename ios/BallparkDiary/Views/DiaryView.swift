@@ -369,25 +369,23 @@ private struct TeamChip: View {
 
 private struct EmptyDiaryView: View {
     @Environment(DiaryStore.self) private var store
-    @State private var pulse: Bool = false
+    @State private var ballSpin: Double = 0
 
     var body: some View {
         VStack(spacing: 20) {
             Spacer().frame(height: 30)
 
-            // Animated baseball illustration
+            // Rotating baseball — continuous spin with a soft glow behind it
             ZStack {
+                // Soft amber glow ring that subtly breathes
                 Circle()
-                    .fill(Theme.lights.opacity(0.08))
-                    .frame(width: 160, height: 160)
-                    .scaleEffect(pulse ? 1.08 : 0.92)
-                Circle()
-                    .strokeBorder(Theme.lights.opacity(0.15), lineWidth: 1)
-                    .frame(width: 180, height: 180)
-                    .scaleEffect(pulse ? 1.05 : 0.95)
+                    .fill(Theme.lights.opacity(0.12))
+                    .frame(width: 150, height: 150)
+                    .blur(radius: 30)
 
-                BaseballMark(size: 80)
-                    .shadow(color: Theme.lights.opacity(0.3), radius: 16)
+                BaseballMark(size: 90)
+                    .rotationEffect(.degrees(ballSpin))
+                    .shadow(color: Theme.lights.opacity(0.35), radius: 20, y: 6)
             }
             .padding(.bottom, 4)
 
@@ -418,8 +416,8 @@ private struct EmptyDiaryView: View {
             .padding(.top, 6)
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) {
-                pulse = true
+            withAnimation(.linear(duration: 14).repeatForever(autoreverses: false)) {
+                ballSpin = 360
             }
         }
     }

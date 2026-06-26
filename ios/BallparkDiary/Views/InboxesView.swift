@@ -326,7 +326,7 @@ private struct ProUpgradeBanner: View {
                     Text("Ballpark Diary Pro")
                         .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Wrapped, share cards & more · $9.99/yr")
+                    Text("Wrapped, share cards & more · $9.99 lifetime")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(2)

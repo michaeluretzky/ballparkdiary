@@ -554,6 +554,21 @@ final class DiaryStore {
         return dates
     }
 
+    /// Reset the entire diary back to its fresh state. All games, inboxes, and
+    /// preferences are cleared. The user will re-enter onboarding on next launch.
+    func resetAll() {
+        gamesByInbox.removeAll()
+        connectedInboxes.removeAll()
+        droppedCandidates.removeAll()
+        importAttempts.removeAll()
+        lastRefreshAt = nil
+        favoriteTeamId = Team.yankees.id
+        hasPickedFavorite = false
+        hasCompletedOnboarding = false
+        hasAcceptedTerms = false
+        defaults.removeObject(forKey: storageKey)
+    }
+
     // MARK: - Dedup on launch
 
     /// One-time cleanup that collapses duplicate games by canonical key,

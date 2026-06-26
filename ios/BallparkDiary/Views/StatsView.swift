@@ -3,6 +3,8 @@ import SwiftUI
 /// Dashboard of derived statistics: totals, record, ballpark progress and milestones.
 struct StatsView: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(StoreViewModel.self) private var storeKit
+    @State private var showPaywall: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -44,9 +46,14 @@ struct StatsView: View {
                                 .padding(.horizontal, 16)
                         }
 
-                        // Ballpark quest
-                        BallparkQuestCard()
-                            .padding(.horizontal, 16)
+                        // Ballpark quest (Pro)
+                        if storeKit.isPremium {
+                            BallparkQuestCard()
+                                .padding(.horizontal, 16)
+                        } else {
+                            LockedBallparkQuestCard(onUnlock: { showPaywall = true })
+                                .padding(.horizontal, 16)
+                        }
 
                         // Top opponents
                         TopOpponentCard()
@@ -61,6 +68,9 @@ struct StatsView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
             .refreshable { await store.refresh(force: true) }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView(store: storeKit)
+            }
         }
     }
 }
@@ -672,5 +682,59 @@ private struct TopOpponentCard: View {
         }
         .padding(16)
         .nightCardDeep()
+    }
+}
+
+// MARK: - Locked ballpark quest (pro gate)
+
+private struct LockedBallparkQuestCard: View {
+    @Environment(DiaryStore.self) private var store
+    let onUnlock: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("The 30-ballpark quest")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text("\(store.ballparkCount)/30")
+                    .font(.stat(13, weight: .heavy))
+                    .foregroundStyle(Theme.textPrimary)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+            }
+
+            Text("Track your progress toward visiting all 30 MLB ballparks.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+
+            Button(action: onUnlock) {
+                HStack(spacing: 6) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Unlock with Pro")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(Theme.lights)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.lights.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Theme.lights.opacity(0.3), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .nightCard()
     }
 }
