@@ -16,6 +16,35 @@ struct Team: Identifiable, Hashable {
 }
 
 extension Team {
+    /// Returns a fill color for the logo circle that stays visible against
+    /// the app's dark night background. Teams with dark primary colors
+    /// (e.g. Yankees navy, White Sox black) use their brighter secondary
+    /// instead; teams with bright primaries keep them.
+    var adaptiveCircleFill: Color {
+        let pLum = primary.luminance
+        let sLum = secondary.luminance
+        // Primary is dark enough to blend into the night background
+        if pLum < 0.18 {
+            // If secondary is noticeably brighter, use it as the fill
+            if sLum > pLum + 0.08 { return secondary }
+            // Both are dark — lighten the primary
+            return primary.lightened(by: 0.28)
+        }
+        return primary
+    }
+
+    /// A glow color that separates the circle from the dark background.
+    /// For dark-fill teams this is brighter to create a visible halo.
+    var adaptiveGlow: Color {
+        let pLum = primary.luminance
+        if pLum < 0.18 {
+            let sLum = secondary.luminance
+            if sLum > pLum + 0.08 { return secondary.opacity(0.35) }
+            return primary.lightened(by: 0.35).opacity(0.45)
+        }
+        return primary.opacity(0.20)
+    }
+
     // AL East
     static let yankees    = Team(id: "nyy", city: "New York",     name: "Yankees",      abbreviation: "NYY", logoMark: "NY",  primaryHex: "#0C2340", secondaryHex: "#C4CED4")
     static let redSox     = Team(id: "bos", city: "Boston",       name: "Red Sox",      abbreviation: "BOS", logoMark: "B",   primaryHex: "#BD3039", secondaryHex: "#0C2340")
@@ -102,5 +131,34 @@ extension Color {
         let g = Double((v >> 8) & 0xFF) / 255.0
         let b = Double(v & 0xFF) / 255.0
         self = Color(red: r, green: g, blue: b)
+    }
+
+    /// Relative luminance (sRGB) — 0 is black, ~1 is white.
+    /// Used to decide whether a color is dark enough to blend into
+    /// the night background.
+    var luminance: Double {
+        // Resolve to platform components via UIColor bridge
+        let ui = UIColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        // sRGB luminance formula
+        func linearize(_ c: CGFloat) -> CGFloat {
+            c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b)
+    }
+
+    /// Returns a lighter version of this color by blending it toward white.
+    /// - Parameter amount: 0 = no change, 1 = fully white.
+    func lightened(by amount: Double) -> Color {
+        let ui = UIColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let t = CGFloat(amount)
+        return Color(
+            red: min(1, r + (1 - r) * t),
+            green: min(1, g + (1 - g) * t),
+            blue: min(1, b + (1 - b) * t)
+        )
     }
 }

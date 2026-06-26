@@ -16,19 +16,24 @@ struct TeamLogoView: View {
     private var lineWidth: CGFloat { max(1.5, size * 0.035) }
     private var innerPadding: CGFloat { size * 0.18 }
 
+    /// The fill used for the team-colored circle — adapts for dark-primary
+    /// teams so the badge doesn't disappear into the night background.
+    private var fillColor: Color { team.adaptiveCircleFill }
+    private var glowColor: Color { team.adaptiveGlow }
+
     var body: some View {
         ZStack {
-            // Subtle outer glow
+            // Outer glow — uses the adaptive glow so dark teams get a visible halo
             Circle()
-                .fill(team.primary.opacity(0.20))
+                .fill(glowColor)
                 .frame(width: size + 10, height: size + 10)
                 .blur(radius: 8)
 
-            // Team-primary fill with subtle gradient
+            // Team-color fill with subtle gradient
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [team.primary.opacity(0.85), team.primary],
+                        colors: [fillColor.opacity(0.85), fillColor],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
