@@ -8,6 +8,7 @@ struct GameDetailView: View {
     @Environment(StoreViewModel.self) private var storeKit
     let game: AttendedGame
     @State private var shareImage: Image? = nil
+    @State private var shareImageData: Data? = nil
     @State private var showDeleteConfirm: Bool = false
     @State private var showPaywall: Bool = false
 
@@ -62,10 +63,10 @@ struct GameDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
-                    if let shareImage {
+                    if let shareImageData, let shareImage {
                         if storeKit.isPremium {
                             ShareLink(
-                                item: shareImage,
+                                item: shareImageData,
                                 preview: SharePreview("\(game.awayTeam.fullName) @ \(game.homeTeam.fullName)", image: shareImage)
                             ) {
                                 Image(systemName: "square.and.arrow.up")
@@ -111,6 +112,7 @@ struct GameDetailView: View {
         renderer.scale = UIScreen.main.scale
         if let uiImage = renderer.uiImage {
             shareImage = Image(uiImage: uiImage)
+            shareImageData = uiImage.pngData()
         }
     }
 }
@@ -181,7 +183,10 @@ private struct ShareableGameCard: View {
             ZStack {
                 Circle().fill(team.primary)
                 Circle().strokeBorder(team.secondary, lineWidth: 2)
-                TeamLogoView(team: team, size: 60)
+                Text(team.abbreviation)
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
             }
             .frame(width: 60, height: 60)
             Text(game.isUpcoming ? "–" : "\(score)")

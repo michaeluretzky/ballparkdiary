@@ -296,13 +296,25 @@ struct ShareView: View {
     /// Opens the main Ballpark Diary app via its custom URL scheme.
     /// Dismisses the extension afterward so the user lands in the main app.
     private func openApp() {
-        guard let url = URL(string: "ballparkdiary://import") else {
-            close()
+        guard let context = extensionContext else {
             return
         }
-        // The completion handler is critical — without it, open(_:completionHandler:)
-        // can silently fail on some iOS versions. Dismiss the extension afterward.
-        extensionContext?.open(url) { [extensionContext] _ in
+        guard let url = URL(string: "ballparkdiary://import") else {
+            context.completeRequest(returningItems: nil)
+            return
+        }
+        // Safety timeout: if open(_:completionHandler:) never calls its handler
+        // (a known iOS quirk), dismiss the extension ourselves after 2 seconds.
+        let workItem = DispatchWorkItem { [weak extensionContext] in
+            extensionContext?.completeRequest(returningItems: nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: workItem)
+        context.open(url) { [weak extensionContext] opened in
+            workItem.cancel()
+            if !opened {
+                // If the system refused to open the URL (e.g. scheme not registered),
+                // still clean up so the user isn't stuck.
+            }
             extensionContext?.completeRequest(returningItems: nil)
         }
     }
