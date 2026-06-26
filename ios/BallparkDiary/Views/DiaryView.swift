@@ -413,11 +413,6 @@ private struct EmptyDiaryView: View {
             }
             .padding(.top, 6)
         }
-        .onAppear {
-            withAnimation(.linear(duration: 14).repeatForever(autoreverses: false)) {
-                ballSpin = 360
-            }
-        }
     }
 }
 

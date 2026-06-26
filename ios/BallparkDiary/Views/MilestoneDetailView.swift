@@ -181,7 +181,7 @@ private struct GameContextCard: View {
                     Image(systemName: "calendar")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Theme.textMuted)
-                    Text(game.date.formatted(date: .long, time: .omitted))
+                    Text(game.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted)))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                 }

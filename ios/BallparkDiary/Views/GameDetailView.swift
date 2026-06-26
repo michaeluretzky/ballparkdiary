@@ -199,7 +199,7 @@ private struct Scoreboard: View {
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 6) {
-                Text(game.date.formatted(date: .complete, time: .omitted))
+                Text(game.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted)))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
