@@ -16,9 +16,8 @@ struct TeamLogoView: View {
     private var lineWidth: CGFloat { max(1.5, size * 0.035) }
     private var innerPadding: CGFloat { size * 0.18 }
 
-    /// The fill used for the team-colored circle — adapts for dark-primary
-    /// teams so the badge doesn't disappear into the night background.
-    private var fillColor: Color { team.adaptiveCircleFill }
+    /// The fill used for the team-colored circle — always the team's primary.
+    private var fillColor: Color { team.primary }
     private var glowColor: Color { team.adaptiveGlow }
 
     var body: some View {
@@ -45,6 +44,17 @@ struct TeamLogoView: View {
                     team.secondary,
                     lineWidth: lineWidth
                 )
+
+            // Subtle light backing so dark SVG logos stay visible against dark
+            // primary-colored circles (e.g. Yankees navy "NY" on navy circle).
+            Circle()
+                .fill(Color.white.opacity(0.18))
+                .frame(
+                    width: size - innerPadding * 2 + 6,
+                    height: size - innerPadding * 2 + 6
+                )
+                .blur(radius: 4)
+                .allowsHitTesting(false)
 
             // Official team logo from MLB CDN, or fallback letter mark.
             // Defer WKWebView creation until the view has appeared on screen
