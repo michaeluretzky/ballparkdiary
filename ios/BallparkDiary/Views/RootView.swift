@@ -57,6 +57,7 @@ struct MainTabsView: View {
             case "diary": selection = .diary
             case "map": selection = .map
             case "stats": selection = .stats
+            case "inboxes": selection = .inboxes
             case "profile": selection = .profile
             default: break
             }

@@ -8,6 +8,17 @@ struct BallparkDiaryApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        #if canImport(UIKit)
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundColor = UIColor(Theme.nightDeep.opacity(0.95))
+        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
+        appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
+        UINavigationBar.appearance().standardAppearance = appearance
+        UINavigationBar.appearance().scrollEdgeAppearance = appearance
+        UINavigationBar.appearance().compactAppearance = appearance
+        #endif
+
         #if DEBUG
         Purchases.logLevel = .debug
         Purchases.configure(withAPIKey: Config.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY)
@@ -27,12 +38,11 @@ struct BallparkDiaryApp: App {
                     await store.refresh()
                 }
                 .onOpenURL { _ in
-                    // Opened from share extension — refresh, switch to Sources tab,
-                    // and auto-open the New Ticket sheet so the user can enter details.
+                    // Opened from share extension — import any shared tickets,
+                    // then switch to Diary so the user can verify the new game.
                     Task {
                         await store.refresh(force: true)
-                        store.requestedTab = "inboxes"
-                        store.requestedManualEntry = true
+                        store.requestedTab = "diary"
                     }
                 }
                 .onChange(of: scenePhase) { _, newPhase in

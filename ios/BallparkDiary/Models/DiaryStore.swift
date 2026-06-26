@@ -41,6 +41,11 @@ final class DiaryStore {
     /// Observed by InboxesView to auto-present ManualGameEntryView.
     var requestedManualEntry: Bool = false
 
+    /// The ID of the most recently imported game from a share extension ticket.
+    /// Set during `importSharedTickets()` and consumed by `DiaryView` to
+    /// auto-navigate to the game detail so the user can verify the imported data.
+    var lastImportedGameId: UUID? = nil
+
     /// Local retry tracking for shared ticket payloads (in-memory only).
     private var importAttempts: [String: (count: Int, firstSeen: Date)] = [:]
 
@@ -592,6 +597,10 @@ final class DiaryStore {
         if let idx = connectedInboxes.firstIndex(where: { $0.id == inbox.id }) {
             connectedInboxes[idx].ticketsFound = existing.count
         }
+
+        // Record the most recently imported game so the diary can auto-navigate.
+        lastImportedGameId = newGames.last?.id
+
         if !hasCompletedOnboarding { hasCompletedOnboarding = true }
         save()
         return newGames.count

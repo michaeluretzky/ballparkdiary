@@ -7,9 +7,10 @@ struct DiaryView: View {
     @State private var showAddSheet = false
     @State private var gameToDelete: AttendedGame? = nil
     @State private var showDeleteConfirm = false
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 LazyVStack(spacing: 18) {
                     if store.games.isEmpty {
@@ -157,6 +158,14 @@ struct DiaryView: View {
                 AddGameOptionsView()
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
+            }
+            .onChange(of: store.lastImportedGameId) { _, gameId in
+                guard let gameId,
+                      let game = store.game(id: gameId) else { return }
+                // Navigate to the freshly imported game's detail for verification.
+                navigationPath.append(game)
+                // Clear so we don't re-navigate on subsequent renders.
+                store.lastImportedGameId = nil
             }
         }
     }
@@ -399,7 +408,7 @@ private struct TeamChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            TeamLogoView(team: team, size: 22, showGloss: false)
+            TeamLogoView(team: team, size: 30, showGloss: false)
             Text(team.fullName)
                 .font(.stat(11, weight: .heavy))
                 .foregroundStyle(primary ? .white : .white.opacity(0.65))
