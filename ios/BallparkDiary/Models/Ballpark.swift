@@ -67,4 +67,47 @@ extension Ballpark {
     static func by(teamId: String) -> Ballpark? {
         all.first(where: { $0.team.id == teamId })
     }
+
+    // MARK: - Fun discoveries (ballpark quest facts)
+
+    /// Curated fun facts for each ballpark — things to look forward to
+    /// discovering when visiting for the first time.
+    static let discoveries: [String: [String]] = [
+        "yankee-stadium": ["Monument Park honors Ruth, Gehrig, DiMaggio, and Mantle.", "The frieze along the roof is a replica of the 1923 original facade."],
+        "fenway-park": ["The lone red seat in the bleachers marks Ted Williams' 502 ft blast.", "Pesky's Pole in right field is just 302 feet from home."],
+        "wrigley-field": ["The manual scoreboard has been operated by hand since 1937.", "Rooftop seats across Waveland Avenue have watched games since 1914."],
+        "dodger-stadium": ["Parking attendants still direct 16,000 cars with hand signals.", "The hexagonal scoreboard was replaced in 1980 but remains iconic."],
+        "oracle-park": ["McCovey Cove has registered over 160 splash hits since 2000.", "The giant glove in left field is 26 feet wide and 30 feet tall."],
+        "camden-yards": ["The B&O Warehouse is the longest brick building on the East Coast.", "The warehouse has never been hit by a home run in a real game."],
+        "pnc-park": ["You can watch the game for free from the Roberto Clemente Bridge.", "Just 38,747 seats — players call it the most intimate park."],
+        "citi-field": ["The Jackie Robinson Rotunda's terrazzo floor is 70 feet wide.", "Shake Shack in center field has a legendary line."],
+        "citizens-bank-park": ["The Phanatic's hot dog launcher can reach the upper deck.", "Ashburn Alley is a walk of fame for Phillies legends."],
+        "truist-park": ["The Monument Garden honors Boston, Milwaukee, and Atlanta eras.", "The Chop House in right field serves BBQ overlooking the warning track."],
+        "nationals-park": ["Upper deck views include the Capitol and Washington Monument.", "The Racing Presidents have logged over 1,000 races since 2006."],
+        "loandepot-park": ["Two 450-gallon saltwater aquariums sit behind home plate.", "The Clevelander in left field is the only pool-party section in the NL."],
+        "tropicana-field": ["Catwalks above the field are in play and have caused many odd rulings.", "The stingray touch tank in right-center holds 10,000 gallons."],
+        "rogers-centre": ["Hotel rooms overlooking the field let you watch a game from bed.", "The 11,000-ton roof takes 20 minutes to open or close."],
+        "progressive-field": ["Heritage Park honors Bob Feller and other franchise legends.", "The bleachers look straight at downtown's Terminal Tower."],
+        "comerica-park": ["Two giant tiger statues guard the entrance, eyes glowing at night.", "The Chevrolet Fountain in center field dances to music."],
+        "american-family-field": ["Bernie Brewer still slides down a yellow slide after every homer.", "The Sausage Race features five costumed racers since the '90s."],
+        "target-field": ["The limestone exterior matches downtown Minneapolis architecture.", "Minnie and Paul shake hands after every Twins home run."],
+        "rate-field": ["The exploding scoreboard was a Bill Veeck original.", "Fireworks blast off after every White Sox home run."],
+        "kauffman-stadium": ["The 322-ft wide waterfall is the largest private fountain on Earth.", "The crown-shaped scoreboard is 106 feet tall."],
+        "minute-maid-park": ["A vintage locomotive runs 800 feet of track after Astros homers.", "Tal's Hill once featured a 30-degree incline with a flagpole in play."],
+        "globe-life-field": ["The ETFE roof lets in natural light while blocking Texas heat.", "One of only six MLB stadiums with a synthetic surface."],
+        "busch-stadium": ["The Gateway Arch frames the view beyond center field.", "Ballpark Village next door is a 150,000 sq ft entertainment district."],
+        "great-american-ball-park": ["Riverboat smokestacks fire flames after Reds home runs.", "The Gap in right field was left open for Ohio River views."],
+        "chase-field": ["The only MLB park with a swimming pool beyond the outfield wall.", "The roof opens in about 4 minutes with two 200-hp motors."],
+        "coors-field": ["Baseballs are stored in a humidor to counteract Denver's thin air.", "The purple row of seats marks exactly one mile above sea level."],
+        "petco-park": ["The 1909 Western Metal Supply building is now the foul pole.", "The Park at the Park is a 2.7-acre public green space."],
+        "angel-stadium": ["The Big A sign is the third-largest scoreboard in the majors.", "A rock pile in left-center mimics the Anaheim Hills."],
+        "t-mobile-park": ["The retractable roof is an umbrella — it shelters but doesn't enclose.", "The Hit It Here Cafe is a two-story restaurant with field views."],
+        "sutter-health-park": ["The gold Tower Bridge beyond left field honors Gold Rush history.", "Lawn seating in right field is one of the most affordable MLB experiences."],
+    ]
+
+    /// A random fun fact for this park.
+    func discoveryFact() -> String {
+        let list = Self.discoveries[id] ?? [trivia]
+        return list.randomElement() ?? trivia
+    }
 }

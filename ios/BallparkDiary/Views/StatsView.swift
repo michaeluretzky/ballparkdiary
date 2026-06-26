@@ -296,113 +296,160 @@ private struct RecordCard: View {
 
 private struct AchievementsPanel: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(StoreViewModel.self) private var storeKit
+    @State private var expanded: Bool = false
+    @State private var showPaywall: Bool = false
 
-    private var achievements: [(id: String, symbol: String, title: String, detail: String, unlocked: Bool, tint: Color)] {
-        [
-            ("first", "ticket.fill", "First Game", "Welcome to the diary", store.totalGames >= 1, Theme.clay),
-            ("five", "building.columns.fill", "Five Stadiums", "Visit 5 unique ballparks", store.ballparkCount >= 5, Theme.lights),
-            ("coast", "globe.americas.fill", "Coast to Coast", "AL East + NL West", coastToCoast, Theme.grass),
-            ("walkoff", "star.circle.fill", "Walk-Off", "A game decided in the final at-bat", witnessedWalkoff, Theme.foul),
-            ("streak", "flame.fill", "Win Streak x3", "3 wins in a row", store.longestStreak >= 3, Theme.clayDeep),
-            ("pilgrim", "crown.fill", "Pilgrim", "All 30 ballparks visited", store.ballparkCount == 30, Theme.lights)
-        ]
-    }
+    /// Layout: show all unlocked first, then locked. Pro-gated locked badges
+    /// show a lock icon for free users and are fully visible for Pro users.
+    private var allAchievements: [Achievement] { store.achievementList }
 
-    private var witnessedWalkoff: Bool {
-        store.games.flatMap(\.highlights).contains(where: { $0.kind == .walkoff })
-    }
-    private var coastToCoast: Bool {
-        let east = store.visitedBallparkIds.intersection(["yankee-stadium", "fenway-park", "citi-field", "citizens-bank-park"])
-        let west = store.visitedBallparkIds.intersection(["dodger-stadium", "oracle-park", "petco-park", "angel-stadium"])
-        return !east.isEmpty && !west.isEmpty
-    }
+    private var visibleCount: Int { expanded ? allAchievements.count : min(12, allAchievements.count) }
+
+    private var unlockedCount: Int { allAchievements.filter(\.unlocked).count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Achievements")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Theme.textSecondary)
+            HStack {
+                Text("Achievements")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text("\(unlockedCount)/\(allAchievements.count)")
+                    .font(.stat(13, weight: .heavy))
+                    .foregroundStyle(Theme.textPrimary)
+            }
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                ForEach(achievements, id: \.id) { a in
-                    AchievementPendant(
-                        symbol: a.symbol,
-                        title: a.title,
-                        detail: a.detail,
-                        unlocked: a.unlocked,
-                        tint: a.tint
-                    )
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(Array(allAchievements.prefix(visibleCount))) { a in
+                    if a.tier == .pro && !storeKit.isPremium {
+                        LockedAchievementMini(a: a, onTap: { showPaywall = true })
+                    } else {
+                        AchievementMini(a: a)
+                    }
                 }
+            }
+
+            if allAchievements.count > 12 {
+                Button { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { expanded.toggle() } } label: {
+                    HStack(spacing: 4) {
+                        Text(expanded ? "Show less" : "See all \(allAchievements.count) badges")
+                            .font(.system(size: 12, weight: .semibold))
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.clay)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
         }
         .padding(16)
         .nightCardDeep()
+        .sheet(isPresented: $showPaywall) {
+            PaywallView(store: storeKit)
+        }
     }
 }
 
-/// Custom achievement badge — a hexagonal pendant / patch instead of SF Symbol
-/// in a tinted circle. Unlocked = full color with glow; locked = desaturated.
-private struct AchievementPendant: View {
-    let symbol: String
-    let title: String
-    let detail: String
-    let unlocked: Bool
-    let tint: Color
+/// Compact 3-column achievement badge — just the icon with a subtle glow if unlocked.
+private struct AchievementMini: View {
+    let a: Achievement
     @State private var shimmer: Bool = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Hex badge
+        VStack(spacing: 6) {
             ZStack {
-                if unlocked {
+                if a.unlocked {
                     Circle()
-                        .fill(tint.opacity(0.18))
-                        .frame(width: 42, height: 42)
+                        .fill(a.tint.opacity(0.14))
+                        .frame(width: 44, height: 44)
                     Circle()
-                        .strokeBorder(tint.opacity(0.5), lineWidth: 1.5)
-                        .frame(width: 42, height: 42)
-                    // Glow ring
-                    Circle()
-                        .strokeBorder(tint.opacity(shimmer ? 0.6 : 0.2), lineWidth: 2)
-                        .frame(width: 48, height: 48)
-                        .blur(radius: 3)
+                        .strokeBorder(a.tint.opacity(shimmer ? 0.55 : 0.3), lineWidth: 1.5)
+                        .frame(width: 44, height: 44)
                 } else {
                     Circle()
                         .fill(Theme.cardElevated)
-                        .frame(width: 42, height: 42)
+                        .frame(width: 44, height: 44)
                     Circle()
-                        .strokeBorder(Theme.textMuted.opacity(0.3), lineWidth: 1)
-                        .frame(width: 42, height: 42)
+                        .strokeBorder(Theme.textMuted.opacity(0.2), lineWidth: 1)
+                        .frame(width: 44, height: 44)
                 }
 
-                Image(systemName: symbol)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(unlocked ? tint : Theme.textMuted)
+                Image(systemName: a.symbol)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(a.unlocked ? a.tint : Theme.textMuted.opacity(0.45))
             }
-            .frame(width: 52, height: 52)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(unlocked ? Theme.textPrimary : Theme.textMuted)
-                    .lineLimit(1)
-                Text(unlocked ? detail : "Not yet")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.textMuted)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
+            Text(a.title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(a.unlocked ? Theme.textPrimary : Theme.textMuted)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(10)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 4)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Theme.cardElevated.opacity(unlocked ? 1.0 : 0.5))
+                .fill(a.unlocked ? Theme.cardElevated : Theme.cardElevated.opacity(0.35))
         )
-        .opacity(unlocked ? 1.0 : 0.65)
-        .onAppear {
-            if unlocked { shimmer = true }
+        .opacity(a.unlocked ? 1.0 : 0.55)
+        .onAppear { if a.unlocked { shimmer = true } }
+        .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: shimmer)
+    }
+}
+
+/// Locked Pro badge — shows a tiny lock indicator that opens the paywall.
+private struct LockedAchievementMini: View {
+    let a: Achievement
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.cardElevated)
+                        .frame(width: 44, height: 44)
+                    Circle()
+                        .strokeBorder(Theme.textMuted.opacity(0.2), lineWidth: 1)
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: a.symbol)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Theme.textMuted.opacity(0.45))
+
+                    // Tiny lock badge
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 7, weight: .heavy))
+                        .foregroundStyle(Theme.lights)
+                        .padding(3)
+                        .background(Circle().fill(Theme.nightDeep.opacity(0.9)))
+                        .offset(x: 14, y: 14)
+                }
+
+                Text(a.title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Theme.cardElevated.opacity(0.35))
+            )
+            .opacity(0.55)
         }
-        .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: shimmer)
+        .buttonStyle(.plain)
     }
 }
 

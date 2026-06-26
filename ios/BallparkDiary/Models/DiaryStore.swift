@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import CoreLocation
+import SwiftUI
 
 /// Central app state. Owns the user's diary of attended games, sourced from two
 /// places only — tickets the user shares into the app (Share Extension) and
@@ -164,6 +166,214 @@ final class DiaryStore {
     /// Ballparks the user has not yet visited, for the "30 Ballpark Quest".
     var ballparksRemaining: [Ballpark] {
         Ballpark.all.filter { !visitedBallparkIds.contains($0.id) }
+    }
+
+    // MARK: - Achievements (computed badges)
+
+    /// Achievements: id, unlocked, and the data needed to display the badge.
+    /// Order matters — it determines the grid display order.
+    var achievementList: [Achievement] {
+        collectionAchievements + divisionAchievements + gameExperienceAchievements
+            + fanDedicationAchievements + roadRivalryAchievements
+    }
+
+    private var collectionAchievements: [Achievement] {
+        [
+            Achievement(id: "first", symbol: "ticket.fill", title: "First Game", detail: "Welcome to the diary", unlocked: totalGames >= 1, tint: Theme.clay, tier: .free),
+            Achievement(id: "five_parks", symbol: "building.columns.fill", title: "Five Stadiums", detail: "Visit 5 unique ballparks", unlocked: ballparkCount >= 5, tint: Theme.lights, tier: .free),
+            Achievement(id: "ten_parks", symbol: "building.2.fill", title: "Ten Stadiums", detail: "Visit 10 unique ballparks", unlocked: ballparkCount >= 10, tint: Theme.lights, tier: .free),
+            Achievement(id: "twenty_parks", symbol: "map.fill", title: "Road Tripper", detail: "Visit 20 unique ballparks", unlocked: ballparkCount >= 20, tint: Theme.lights, tier: .free),
+            Achievement(id: "thirty_parks", symbol: "crown.fill", title: "Pilgrim", detail: "All 30 ballparks visited", unlocked: ballparkCount == 30, tint: Theme.lights, tier: .free),
+            Achievement(id: "coast", symbol: "globe.americas.fill", title: "Coast to Coast", detail: "AL East + NL West", unlocked: coastToCoast, tint: Theme.grass, tier: .free),
+        ]
+    }
+
+    private var divisionAchievements: [Achievement] {
+        [
+            Achievement(id: "div_ale", symbol: "star.fill", title: "AL East", detail: "All 5 AL East parks", unlocked: divisionComplete(Self.alEast), tint: Team.yankees.primary, tier: .pro),
+            Achievement(id: "div_alc", symbol: "star.fill", title: "AL Central", detail: "All 5 AL Central parks", unlocked: divisionComplete(Self.alCentral), tint: Team.guardians.primary, tier: .pro),
+            Achievement(id: "div_alw", symbol: "star.fill", title: "AL West", detail: "All 5 AL West parks", unlocked: divisionComplete(Self.alWest), tint: Team.astros.primary, tier: .pro),
+            Achievement(id: "div_nle", symbol: "star.fill", title: "NL East", detail: "All 5 NL East parks", unlocked: divisionComplete(Self.nlEast), tint: Team.braves.primary, tier: .pro),
+            Achievement(id: "div_nlc", symbol: "star.fill", title: "NL Central", detail: "All 5 NL Central parks", unlocked: divisionComplete(Self.nlCentral), tint: Team.cubs.primary, tier: .pro),
+            Achievement(id: "div_nlw", symbol: "star.fill", title: "NL West", detail: "All 5 NL West parks", unlocked: divisionComplete(Self.nlWest), tint: Team.dodgers.primary, tier: .pro),
+            Achievement(id: "league", symbol: "arrow.left.and.right", title: "Both Leagues", detail: "Parks in AL and NL", unlocked: visitedBothLeagues, tint: Theme.clay, tier: .pro),
+        ]
+    }
+
+    private var gameExperienceAchievements: [Achievement] {
+        [
+            Achievement(id: "extras", symbol: "clock.arrow.2.circlepath", title: "Extra Innings", detail: "Free baseball!", unlocked: witnessedExtraInnings, tint: Theme.lights, tier: .free),
+            Achievement(id: "walkoff", symbol: "star.circle.fill", title: "Walk-Off", detail: "Game decided in final AB", unlocked: witnessedWalkoff, tint: Theme.foul, tier: .free),
+            Achievement(id: "blowout", symbol: "flame.fill", title: "Blowout", detail: "10+ run difference", unlocked: witnessedBlowout, tint: Theme.foul, tier: .free),
+            Achievement(id: "duel", symbol: "hand.point.up.fill", title: "Pitcher's Duel", detail: "2 or fewer total runs", unlocked: witnessedPitchersDuel, tint: Theme.clayDeep, tier: .free),
+            Achievement(id: "shutout", symbol: "lock.shield.fill", title: "Shutout", detail: "One team held scoreless", unlocked: witnessedShutout, tint: Theme.grass, tier: .free),
+            Achievement(id: "slugfest", symbol: "baseball.fill", title: "Slugfest", detail: "5+ home runs", unlocked: witnessedSlugfest, tint: Theme.lights, tier: .free),
+            Achievement(id: "sunday", symbol: "sun.max.fill", title: "Sunday Afternoon", detail: "Day game on a Sunday", unlocked: witnessedSundayDayGame, tint: Theme.lights, tier: .free),
+            Achievement(id: "rain", symbol: "cloud.rain.fill", title: "Rain or Shine", detail: "Stuck through a rain delay", unlocked: witnessedRainDelay, tint: Theme.clay, tier: .free),
+        ]
+    }
+
+    private var fanDedicationAchievements: [Achievement] {
+        [
+            Achievement(id: "die_hard", symbol: "heart.fill", title: "Die Hard", detail: "10+ games in a season", unlocked: dieHardFan, tint: Theme.foul, tier: .free),
+            Achievement(id: "iron_fan", symbol: "figure.baseball", title: "Iron Fan", detail: "25+ lifetime games", unlocked: totalGames >= 25, tint: Theme.clay, tier: .free),
+            Achievement(id: "silver_slugger", symbol: "medal.fill", title: "Silver Slugger", detail: "50+ lifetime games", unlocked: totalGames >= 50, tint: Theme.lights, tier: .free),
+            Achievement(id: "century", symbol: "100.circle", title: "Century Club", detail: "100+ lifetime games", unlocked: totalGames >= 100, tint: Theme.lights, tier: .free),
+            Achievement(id: "back_to_back", symbol: "arrow.triangle.pull", title: "Back-to-Back", detail: "Consecutive days", unlocked: didBackToBack, tint: Theme.clayDeep, tier: .free),
+            Achievement(id: "streak", symbol: "flame.fill", title: "Win Streak x3", detail: "3 wins in a row", unlocked: longestStreak >= 3, tint: Theme.clayDeep, tier: .free),
+            Achievement(id: "streak5", symbol: "bolt.fill", title: "Win Streak x5", detail: "5 wins in a row", unlocked: longestStreak >= 5, tint: Theme.lights, tier: .free),
+        ]
+    }
+
+    private var roadRivalryAchievements: [Achievement] {
+        [
+            Achievement(id: "road_warrior", symbol: "car.fill", title: "Road Warrior", detail: "3+ away parks", unlocked: roadWarrior, tint: Theme.clay, tier: .pro),
+            Achievement(id: "international", symbol: "airplane", title: "International", detail: "Crossed the border", unlocked: visitedInternational, tint: Team.blueJays.primary, tier: .free),
+            Achievement(id: "dome_dweller", symbol: "building.fill", title: "Dome Dweller", detail: "Every indoor park", unlocked: domeDweller, tint: Theme.grass, tier: .pro),
+            Achievement(id: "rivalry_subway", symbol: "train.side.front.car", title: "Subway Series", detail: "NYY vs NYM", unlocked: witnessedRivalry("nyy", "nym"), tint: Team.yankees.primary, tier: .pro),
+            Achievement(id: "rivalry_freeway", symbol: "car.rear.road.lane", title: "Freeway Series", detail: "LAD vs LAA", unlocked: witnessedRivalry("lad", "laa"), tint: Team.dodgers.primary, tier: .pro),
+            Achievement(id: "rivalry_crosstown", symbol: "building.2.fill", title: "Crosstown Classic", detail: "CHC vs CWS", unlocked: witnessedRivalry("chc", "cws"), tint: Team.cubs.primary, tier: .pro),
+            Achievement(id: "rivalry_ohio", symbol: "map.fill", title: "Battle of Ohio", detail: "CIN vs CLE", unlocked: witnessedRivalry("cin", "cle"), tint: Team.reds.primary, tier: .pro),
+            Achievement(id: "rivalry_lonestar", symbol: "star.fill", title: "Lone Star", detail: "TEX vs HOU", unlocked: witnessedRivalry("tex", "hou"), tint: Team.rangers.primary, tier: .pro),
+        ]
+    }
+
+    // ── Achievement Detectors ──
+
+    struct MLBDivision { let name: String; let teamIds: Set<String> }
+    static let alEast    = MLBDivision(name: "AL East",    teamIds: ["nyy", "bos", "tor", "bal", "tb"])
+    static let alCentral = MLBDivision(name: "AL Central", teamIds: ["cle", "det", "kc",  "min", "cws"])
+    static let alWest    = MLBDivision(name: "AL West",    teamIds: ["hou", "laa", "ath", "sea", "tex"])
+    static let nlEast    = MLBDivision(name: "NL East",    teamIds: ["atl", "mia", "nym", "phi", "wsh"])
+    static let nlCentral = MLBDivision(name: "NL Central", teamIds: ["chc", "cin", "mil", "pit", "stl"])
+    static let nlWest    = MLBDivision(name: "NL West",    teamIds: ["ari", "col", "lad", "sd",  "sf"])
+
+    private func divisionComplete(_ div: MLBDivision) -> Bool {
+        let homeParks = div.teamIds.compactMap { Ballpark.by(teamId: $0)?.id }
+        return homeParks.allSatisfy(visitedBallparkIds.contains)
+    }
+
+    private var visitedBothLeagues: Bool {
+        let al = visitedBallparkIds.compactMap { Ballpark.by(id: $0) }.contains { park in
+            Self.alEast.teamIds.contains(park.team.id) || Self.alCentral.teamIds.contains(park.team.id) || Self.alWest.teamIds.contains(park.team.id)
+        }
+        let nl = visitedBallparkIds.compactMap { Ballpark.by(id: $0) }.contains { park in
+            Self.nlEast.teamIds.contains(park.team.id) || Self.nlCentral.teamIds.contains(park.team.id) || Self.nlWest.teamIds.contains(park.team.id)
+        }
+        return al && nl
+    }
+
+    var coastToCoast: Bool {
+        let east = visitedBallparkIds.intersection(["yankee-stadium", "fenway-park", "citi-field", "citizens-bank-park"])
+        let west = visitedBallparkIds.intersection(["dodger-stadium", "oracle-park", "petco-park", "angel-stadium"])
+        return !east.isEmpty && !west.isEmpty
+    }
+
+    var witnessedWalkoff: Bool {
+        games.flatMap(\.highlights).contains { $0.kind == .walkoff }
+    }
+
+    var witnessedExtraInnings: Bool {
+        games.flatMap(\.highlights).contains { h in
+            if let inningNum = Int(h.inning.dropFirst()), inningNum >= 10 { return true }
+            return false
+        }
+    }
+
+    var witnessedBlowout: Bool {
+        completedGames.contains { abs($0.homeScore - $0.awayScore) >= 10 }
+    }
+
+    var witnessedPitchersDuel: Bool {
+        completedGames.contains { ($0.homeScore + $0.awayScore) <= 2 }
+    }
+
+    var witnessedShutout: Bool {
+        completedGames.contains { $0.homeScore == 0 || $0.awayScore == 0 }
+    }
+
+    var witnessedSlugfest: Bool {
+        completedGames.contains { g in
+            g.highlights.filter { $0.kind == .homeRun }.count >= 5
+        }
+    }
+
+    var witnessedSundayDayGame: Bool {
+        completedGames.contains { g in
+            let weekday = Calendar.current.component(.weekday, from: g.date)
+            return weekday == 1 && g.weather == .clear
+        }
+    }
+
+    var witnessedRainDelay: Bool {
+        completedGames.contains { $0.weather == .rain }
+    }
+
+    var dieHardFan: Bool {
+        let groups = Dictionary(grouping: completedGames) { Calendar.current.component(.year, from: $0.date) }
+        return groups.values.contains { $0.count >= 10 }
+    }
+
+    var didBackToBack: Bool {
+        let sorted = completedGames.map(\.date).sorted()
+        for i in 1..<sorted.count {
+            let diff = Calendar.current.dateComponents([.day], from: sorted[i-1], to: sorted[i]).day ?? 99
+            if diff == 1 { return true }
+        }
+        return false
+    }
+
+    var visitedInternational: Bool {
+        visitedBallparkIds.contains("rogers-centre")
+    }
+
+    var domeDweller: Bool {
+        let domeParks = Ballpark.all.filter { $0.roof != .open }.map(\.id)
+        return !domeParks.isEmpty && domeParks.allSatisfy(visitedBallparkIds.contains)
+    }
+
+    var roadWarrior: Bool {
+        let fav = favoriteTeam
+        let awayParks = completedGames
+            .filter { ($0.homeTeamId == fav.id && !$0.userRootedForHome) || ($0.awayTeamId == fav.id && $0.userRootedForHome) }
+            .map(\.ballparkId)
+        return Set(awayParks).count >= 3
+    }
+
+    func witnessedRivalry(_ teamA: String, _ teamB: String) -> Bool {
+        completedGames.contains { g in
+            let ids = [g.homeTeamId, g.awayTeamId]
+            return ids.contains(teamA) && ids.contains(teamB)
+        }
+    }
+
+    // ── Ballpark Facts (fun discoveries) ──
+
+    /// Fun fact for a park — delegates to the per-park discovery catalog.
+    func discoveryFor(_ park: Ballpark) -> String { park.discoveryFact() }
+
+    /// Nearby parks the user hasn't visited yet, sorted by distance from the
+    /// user's favorite team's home ballpark (or current city).
+    func nearestUnvisitedParks(limit: Int = 3) -> [Ballpark] {
+        let homeCoordinate = Ballpark.by(teamId: favoriteTeamId)?.coordinate
+            ?? CLLocationCoordinate2D(latitude: 39.5, longitude: -96.0)
+        let homeLoc = CLLocation(latitude: homeCoordinate.latitude, longitude: homeCoordinate.longitude)
+        return ballparksRemaining.sorted { a, b in
+            let da = homeLoc.distance(from: CLLocation(latitude: a.latitude, longitude: a.longitude))
+            let db = homeLoc.distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+            return da < db
+        }.prefix(limit).map { $0 }
+    }
+
+    /// Parks visited in chronological order — used to draw journey lines on the map.
+    var visitedParkSequence: [Ballpark] {
+        let chrono = completedGames.sorted { $0.date < $1.date }
+        var seen: Set<String> = []
+        return chrono.compactMap { game -> Ballpark? in
+            guard !seen.contains(game.ballparkId) else { return nil }
+            seen.insert(game.ballparkId)
+            return game.ballpark
+        }
     }
 
     // MARK: - Canonical identity
@@ -670,4 +880,20 @@ struct DroppedCandidate: Identifiable, Codable, Hashable {
     let opponentMlbId: Int?
     let snippet: String
     let reason: String
+}
+
+// MARK: - Achievement model
+
+/// A badge the user can earn by attending games, visiting parks, or
+/// witnessing rare baseball events.
+struct Achievement: Identifiable {
+    let id: String
+    let symbol: String
+    let title: String
+    let detail: String
+    let unlocked: Bool
+    let tint: Color
+    let tier: Tier
+
+    enum Tier { case free, pro }
 }
