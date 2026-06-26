@@ -79,9 +79,9 @@ private struct HeroPanel: View {
                     ZStack {
                         Circle().fill(milestone.team.primary)
                         Circle().strokeBorder(milestone.team.secondary, lineWidth: 1.5)
-                        TeamLogoView(team: milestone.team, size: 24, showGloss: false)
+                        TeamLogoView(team: milestone.team, size: 36, showGloss: false)
                     }
-                    .frame(width: 24, height: 24)
+                    .frame(width: 36, height: 36)
 
                     Text(milestone.playerName)
                         .font(.system(size: 14, weight: .semibold))

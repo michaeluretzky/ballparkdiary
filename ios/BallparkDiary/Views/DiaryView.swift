@@ -159,13 +159,12 @@ struct DiaryView: View {
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
             }
+            .onAppear {
+                navigateToImportedGameIfNeeded()
+            }
             .onChange(of: store.lastImportedGameId) { _, gameId in
-                guard let gameId,
-                      let game = store.game(id: gameId) else { return }
-                // Navigate to the freshly imported game's detail for verification.
-                navigationPath.append(game)
-                // Clear so we don't re-navigate on subsequent renders.
-                store.lastImportedGameId = nil
+                guard let gameId else { return }
+                navigateToImportedGame(gameId: gameId)
             }
         }
     }
@@ -177,6 +176,20 @@ struct DiaryView: View {
         return groups
             .sorted { $0.key > $1.key }
             .map { ("\($0.key) Season", $0.value.sorted { $0.date > $1.date }) }
+    }
+
+    /// Navigate to a freshly imported game so the user can verify the data.
+    /// Called both from `onAppear` (the game may have been imported before
+    /// this view mounted) and `onChange` (imported while this view is visible).
+    private func navigateToImportedGame(gameId: UUID) {
+        guard let game = store.game(id: gameId) else { return }
+        navigationPath.append(game)
+        store.lastImportedGameId = nil
+    }
+
+    private func navigateToImportedGameIfNeeded() {
+        guard let gameId = store.lastImportedGameId else { return }
+        navigateToImportedGame(gameId: gameId)
     }
 }
 
@@ -408,7 +421,7 @@ private struct TeamChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            TeamLogoView(team: team, size: 30, showGloss: false)
+            TeamLogoView(team: team, size: 36, showGloss: false)
             Text(team.fullName)
                 .font(.stat(11, weight: .heavy))
                 .foregroundStyle(primary ? .white : .white.opacity(0.65))

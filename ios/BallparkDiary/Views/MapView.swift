@@ -308,11 +308,11 @@ private struct NextParkBanner: View {
                     ZStack {
                         Circle()
                             .fill(park.team.primary.opacity(0.2))
-                            .frame(width: 40, height: 40)
+                            .frame(width: 48, height: 48)
                         Circle()
                             .strokeBorder(park.team.primary, lineWidth: 1.5)
-                            .frame(width: 40, height: 40)
-                        TeamLogoView(team: park.team, size: 28, showGloss: false)
+                            .frame(width: 48, height: 48)
+                        TeamLogoView(team: park.team, size: 36, showGloss: false)
                     }
 
                     VStack(alignment: .leading, spacing: 1) {

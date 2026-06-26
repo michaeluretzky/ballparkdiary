@@ -25,6 +25,7 @@ struct ManualGameEntryView: View {
     // Verification state
     @State private var verifyState: VerifyState = .idle
     @State private var verifyMessage: String = ""
+    @State private var resolvingUnsure: Bool = false
 
     enum Field: Hashable { case section, row, seat, notes }
     enum VerifyState {
@@ -39,7 +40,22 @@ struct ManualGameEntryView: View {
     private var resolvedHomeTeamId: String {
         homeTeamId.isEmpty ? ballpark.team.id : homeTeamId
     }
-    private var canVerify: Bool { resolvedHomeTeamId != awayTeamId }
+    /// Sentinel value meaning the user doesn't remember this team — the app
+    /// will scan the schedule on the selected date using the other (known) team
+    /// to fill in the missing opponent.
+    fileprivate static let unsureTeamId = "__unsure__"
+
+    private var isHomeUnsure: Bool { homeTeamId.isEmpty || homeTeamId == Self.unsureTeamId }
+    private var isAwayUnsure: Bool { awayTeamId == Self.unsureTeamId }
+
+    private var canVerify: Bool {
+        // Both unsure — nothing to search by
+        if isHomeUnsure && isAwayUnsure { return false }
+        // Both known and different — normal verify
+        if !isHomeUnsure && !isAwayUnsure { return resolvedHomeTeamId != awayTeamId }
+        // One unsure, other known — can scan
+        return true
+    }
 
     var body: some View {
         NavigationStack {
@@ -84,7 +100,13 @@ struct ManualGameEntryView: View {
                                 )
                                 TeamRow(label: "Away", selection: $awayTeamId)
                                 if !canVerify {
-                                    Text("Home and away can't be the same team.")
+                                    let msg: String = {
+                                        if isHomeUnsure && isAwayUnsure {
+                                            return "Pick at least one team so we can look up the matchup."
+                                        }
+                                        return "Home and away can't be the same team."
+                                    }()
+                                    Text(msg)
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundStyle(Theme.foul)
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -195,6 +217,45 @@ struct ManualGameEntryView: View {
     private func verifyAndSave() {
         guard canVerify else { return }
         verifyState = .verifying
+        resolvingUnsure = isHomeUnsure || isAwayUnsure
+
+        // When one team is unknown, scan the schedule using the known team
+        // and fill in the missing opponent from the first matching game.
+        if resolvingUnsure {
+            let knownTeamId = isHomeUnsure ? awayTeamId : resolvedHomeTeamId
+            guard let knownMlbId = Team.by(id: knownTeamId)?.mlbId, knownMlbId > 0 else {
+                verifyState = .notFound
+                verifyMessage = "Couldn't resolve the known team."
+                return
+            }
+
+            Task { @MainActor in
+                guard let results = try? await MLBStatsService.shared.games(on: date, teamMlbId: knownMlbId),
+                      let match = results.first
+                else {
+                    withAnimation(.snappy) {
+                        verifyState = .notFound
+                        verifyMessage = "We couldn't find a game for that team on that date."
+                    }
+                    return
+                }
+
+                // Resolve the missing team from the actual matchup
+                let resolvedHomeMlbId = isHomeUnsure ? match.homeMlbId : Team.by(id: resolvedHomeTeamId)?.mlbId ?? 0
+                let resolvedAwayMlbId = isAwayUnsure ? match.awayMlbId : Team.by(id: awayTeamId)?.mlbId ?? 0
+
+                // Update team selections from the real data
+                if isHomeUnsure, let resolvedTeam = Team.by(mlbId: match.homeMlbId) {
+                    homeTeamId = resolvedTeam.id
+                }
+                if isAwayUnsure, let resolvedTeam = Team.by(mlbId: match.awayMlbId) {
+                    awayTeamId = resolvedTeam.id
+                }
+
+                await finishVerification(with: match)
+            }
+            return
+        }
 
         let homeMlbId = Team.by(id: resolvedHomeTeamId)?.mlbId ?? 0
         let awayMlbId = Team.by(id: awayTeamId)?.mlbId ?? 0
@@ -205,67 +266,74 @@ struct ManualGameEntryView: View {
         }
 
         Task { @MainActor in
-            let found: Bool
             if let results = try? await MLBStatsService.shared.games(on: date, teamMlbId: homeMlbId) {
                 let match = results.first { result in
                     (result.homeMlbId == homeMlbId && result.awayMlbId == awayMlbId) ||
                     (result.awayMlbId == homeMlbId && result.homeMlbId == awayMlbId)
                 }
                 if let match {
-                    // Found the real game — build with verified data.
-                    guard let baseGame = AttendedGame.from(
-                        result: match,
-                        source: "Manual entry (verified)",
-                        emailSubject: "Manual entry · \(ballpark.name)",
-                        favoriteTeamId: store.favoriteTeamId,
-                        section: section.isEmpty ? "—" : section,
-                        row: row.isEmpty ? "—" : row,
-                        seat: seat.isEmpty ? "—" : seat,
-                        confirmation: nil
-                    ) else {
-                        verifyState = .notFound
-                        verifyMessage = "Couldn't resolve the ballpark for this game."
-                        return
-                    }
-
-                    let enrichedGame: AttendedGame
-                    if !baseGame.isUpcoming, let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
-                        enrichedGame = baseGame.enriched(with: details)
-                    } else {
-                        enrichedGame = baseGame
-                    }
-
-                    // Check for score discrepancy
-                    let notice: String?
-                    let userEnteredScore = homeScore > 0 || awayScore > 0
-                    let realScoreDiffers = userEnteredScore && (homeScore != enrichedGame.homeScore || awayScore != enrichedGame.awayScore)
-                    if realScoreDiffers {
-                        notice = "Final was \(enrichedGame.awayScore)–\(enrichedGame.homeScore) — updated to match the official box score"
-                    } else {
-                        notice = nil
-                    }
-
-                    withAnimation(.snappy) {
-                        verifyState = .verified(game: enrichedGame, notice: notice)
-                    }
-                    found = true
+                    await finishVerification(with: match)
                 } else {
-                    found = false
+                    withAnimation(.snappy) {
+                        verifyState = .notFound
+                        verifyMessage = "We couldn't find that matchup on that date."
+                    }
                 }
             } else {
                 // Offline — save unverified, auto re-verify later.
                 withAnimation(.snappy) {
                     saveUnverified()
                 }
-                return
             }
+        }
+    }
 
-            if !found {
-                withAnimation(.snappy) {
-                    verifyState = .notFound
-                    verifyMessage = "We couldn't find that matchup on that date."
-                }
+    /// Shared verification finalization: enrich with box score details and
+    /// surface any score discrepancies.
+    @MainActor
+    private func finishVerification(with match: MLBGameResult) async {
+        guard let baseGame = AttendedGame.from(
+            result: match,
+            source: "Manual entry (verified)",
+            emailSubject: "Manual entry · \(ballpark.name)",
+            favoriteTeamId: store.favoriteTeamId,
+            section: section.isEmpty ? "—" : section,
+            row: row.isEmpty ? "—" : row,
+            seat: seat.isEmpty ? "—" : seat,
+            confirmation: nil
+        ) else {
+            verifyState = .notFound
+            verifyMessage = "Couldn't resolve the ballpark for this game."
+            return
+        }
+
+        let enrichedGame: AttendedGame
+        if !baseGame.isUpcoming, let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
+            enrichedGame = baseGame.enriched(with: details)
+        } else {
+            enrichedGame = baseGame
+        }
+
+        // Build an appropriate notice
+        let notice: String?
+        let userEnteredScore = homeScore > 0 || awayScore > 0
+        let realScoreDiffers = userEnteredScore && (homeScore != enrichedGame.homeScore || awayScore != enrichedGame.awayScore)
+
+        if resolvingUnsure {
+            let found = "Found \(enrichedGame.awayTeam.fullName) @ \(enrichedGame.homeTeam.fullName)"
+            if realScoreDiffers {
+                notice = "\(found). Final was \(enrichedGame.awayScore)–\(enrichedGame.homeScore) — updated to match the official box score"
+            } else {
+                notice = found
             }
+        } else if realScoreDiffers {
+            notice = "Final was \(enrichedGame.awayScore)–\(enrichedGame.homeScore) — updated to match the official box score"
+        } else {
+            notice = nil
+        }
+
+        withAnimation(.snappy) {
+            verifyState = .verified(game: enrichedGame, notice: notice)
         }
     }
 
@@ -530,19 +598,39 @@ private struct TeamRow: View {
                         Label(team.fullName, systemImage: team.id == selection ? "checkmark" : "")
                     }
                 }
+                Divider()
+                Button {
+                    selection = ManualGameEntryView.unsureTeamId
+                } label: {
+                    Label("I'm not sure", systemImage: selection == ManualGameEntryView.unsureTeamId ? "checkmark" : "questionmark")
+                }
             } label: {
+                let isUnsure = selection == ManualGameEntryView.unsureTeamId
                 let team = Team.by(id: selection) ?? .yankees
                 HStack(spacing: 10) {
-                    ZStack {
-                        Circle().fill(team.primary)
-                        Circle().strokeBorder(team.secondary, lineWidth: 1.5)
-                        TeamLogoView(team: team, size: 28, showGloss: false)
+                    if isUnsure {
+                        ZStack {
+                            Circle().fill(Theme.cardElevated)
+                            Circle().strokeBorder(Theme.textMuted.opacity(0.3), lineWidth: 1.5)
+                            Image(systemName: "questionmark")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        .frame(width: 36, height: 36)
+                        Text("I'm not sure")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    } else {
+                        ZStack {
+                            Circle().fill(team.primary)
+                            Circle().strokeBorder(team.secondary, lineWidth: 1.5)
+                            TeamLogoView(team: team, size: 36, showGloss: false)
+                        }
+                        .frame(width: 36, height: 36)
+                        Text(team.fullName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.textPrimary)
                     }
-                    .frame(width: 28, height: 28)
-
-                    Text(team.fullName)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 11, weight: .bold))
