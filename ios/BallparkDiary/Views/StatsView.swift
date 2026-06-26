@@ -149,7 +149,7 @@ private struct SeasonHeatmap: View {
                 VStack(spacing: 6) {
                     ForEach(yearlyData, id: \.year) { pair in
                         HStack(spacing: 10) {
-                            Text("\(pair.year)")
+                            Text(verbatim: "\(pair.year)")
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(Theme.textMuted)
                                 .frame(width: 42, alignment: .leading)
