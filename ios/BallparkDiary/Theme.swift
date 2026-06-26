@@ -74,26 +74,52 @@ enum Theme {
 }
 
 // MARK: - Typography
-
-/// Bundled athletic typeface name. The app ships a condensed varsity display
-/// face for scores, big numbers, and the "scoreboard" font role.
-/// Falls back to system serif on platforms where the font isn't bundled.
-private let athleticFontName = "ArialRoundedMTBold" // placeholder; real font ships via Info.plist
+//
+// Typographic hierarchy inspired by classic baseball programs and modern
+// scoreboard design — structured and official without feeling stiff.
+//
+// Roles:
+//   display   — biggest numbers (scores, hero counts) · serif
+//   headline  — section titles, ballpark names · serif
+//   scoreboard — compact athletic label (W/L, team abbreviations) · default
+//   stat      — tabular monospaced numbers · default
+//   body      — paragraph text · default
+//   caption   — secondary / footnote text · default
+//   caps      — tracked uppercase label · default
 
 extension Font {
-    /// Display font evocative of a ballpark scoreboard — condensed, athletic.
-    /// Falls back to system serif when the bundled face isn't available.
-    static func scoreboard(_ size: CGFloat, weight _: Font.Weight = .heavy) -> Font {
-        // Use a bold system rounded font as an athletic stand-in;
-        // a real bundled .ttf/.otf can be dropped into Assets and
-        // registered via Info.plist → UIAppFonts. The rounded weight
-        // reads tighter and more athletic than generic serif.
-        .system(size: size, weight: .black, design: .rounded)
+    /// Classic newspaper serif for hero numbers — authoritative and timeless.
+    /// Georgia carries the weight of real print journalism, not a design tool's default.
+    static func display(_ size: CGFloat, weight: Font.Weight = .black) -> Font {
+        Font.custom("Georgia-Bold", size: size)
+    }
+
+    /// Georgia headline for section titles, ballpark names, and card headers.
+    /// The same face used by newspapers and official scorecards for decades.
+    static func headline(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
+        Font.custom("Georgia-Bold", size: size)
+    }
+
+
+    /// Compact athletic label — scores, team abbreviations, win/loss markers.
+    /// Structured default design reads clean and official on dark backgrounds.
+    static func scoreboard(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
+        .system(size: size, weight: weight, design: .default)
     }
 
     /// Tabular, monospaced digits for stat numbers.
     static func stat(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .rounded).monospacedDigit()
+        .system(size: size, weight: weight, design: .default).monospacedDigit()
+    }
+
+    /// Paragraph body — clean, readable San Francisco.
+    static func body(_ size: CGFloat = 14, weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight, design: .default)
+    }
+
+    /// Small secondary / footnote text.
+    static func caption(_ size: CGFloat = 11, weight: Font.Weight = .medium) -> Font {
+        .system(size: size, weight: weight, design: .default)
     }
 
     /// Compact uppercase label. Used sparingly — not on every card.

@@ -310,7 +310,7 @@ private struct OnboardStep: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .font(.system(size: 13, weight: .heavy))
                 .foregroundStyle(Theme.clay)
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(Theme.clay.opacity(0.16)))

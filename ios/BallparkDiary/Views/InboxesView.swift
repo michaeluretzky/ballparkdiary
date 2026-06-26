@@ -223,7 +223,7 @@ private struct ShareStep: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Text(number)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .font(.system(size: 12, weight: .heavy))
                 .foregroundStyle(Theme.clay)
                 .frame(width: 22, height: 22)
                 .background(Circle().fill(Theme.clay.opacity(0.16)))
@@ -291,7 +291,7 @@ private struct EmptyInboxesHint: View {
                 .opacity(animate ? 0.55 : 0.35)
                 .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: animate)
             Text("Nothing here yet")
-                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .font(.headline(16, weight: .heavy))
                 .foregroundStyle(Theme.textSecondary)
             Text("Share a ticket or add a game by hand to get started.")
                 .font(.system(size: 13))

@@ -360,7 +360,7 @@ struct SeatPerspectiveView: View {
             Image(systemName: "location.fill")
                 .font(.system(size: 8, weight: .bold))
             Text("Section \(game.section)")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .font(.caption(10, weight: .heavy))
         }
         .foregroundStyle(.black)
         .padding(.horizontal, 10)

@@ -246,7 +246,7 @@ struct GameCard: View {
             )
 
             Text(game.ballpark.name)
-                .font(.system(size: 14, weight: .black, design: .rounded))
+                .font(.headline(14, weight: .black))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)

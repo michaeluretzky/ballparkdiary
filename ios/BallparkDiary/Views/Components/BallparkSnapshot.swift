@@ -95,13 +95,13 @@ struct BallparkSnapshot: View {
                         .shadow(color: teamColor.opacity(0.5), radius: 16, y: 4)
 
                     Text(ballpark.team.abbreviation)
-                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .font(.headline(16, weight: .black))
                         .foregroundStyle(.white)
                 }
 
                 VStack(spacing: 4) {
                     Text(ballpark.nickname ?? ballpark.name)
-                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .font(.headline(16, weight: .black))
                         .foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.4), radius: 4)
                     Text("\(ballpark.city), \(ballpark.state)")
@@ -127,7 +127,7 @@ struct BallparkSnapshot: View {
     private func heroFact(label: String, value: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .font(.headline(13, weight: .heavy))
                 .foregroundStyle(.white)
             Text(label.uppercased())
                 .font(.system(size: 8, weight: .bold))

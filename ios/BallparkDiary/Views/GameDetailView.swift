@@ -496,7 +496,7 @@ private struct BallparkPanel: View {
                     .frame(width: 3, height: 18)
                     .clipShape(.capsule)
                 Text(game.ballpark.nickname ?? game.ballpark.name)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.headline(16))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
             }

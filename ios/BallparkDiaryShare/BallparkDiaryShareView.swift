@@ -55,7 +55,7 @@ struct ShareView: View {
 
                 // Title
                 Text(titleText)
-                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .font(.system(size: 22, weight: .black, design: .serif))
                     .foregroundStyle(Self.chalk)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
@@ -71,7 +71,7 @@ struct ShareView: View {
                 // Matchup summary (when we have it)
                 if !matchupSummary.isEmpty, case .saved = phase {
                     Text(matchupSummary)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(size: 14, weight: .bold, design: .serif))
                         .foregroundStyle(Self.chalk)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
