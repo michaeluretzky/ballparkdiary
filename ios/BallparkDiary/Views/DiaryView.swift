@@ -63,7 +63,7 @@ struct DiaryView: View {
                                         .clipShape(.capsule)
                                     Text(group.0)
                                         .font(.system(size: 13, weight: .bold))
-                                        .foregroundStyle(Theme.textSecondary)
+                                        .foregroundStyle(.white)
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.top, 6)
@@ -162,10 +162,10 @@ private struct HeaderStat: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
                 .font(.stat(20, weight: .heavy))
-                .foregroundStyle(Theme.textPrimary)
+                .foregroundStyle(.white)
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.textMuted)
+                .foregroundStyle(.white.opacity(0.6))
         }
     }
 }
@@ -192,7 +192,7 @@ struct GameCard: View {
                     TeamChip(team: game.awayTeam, primary: false)
                     Text("@")
                         .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(Theme.textMuted)
+                        .foregroundStyle(.white.opacity(0.5))
                     TeamChip(team: game.homeTeam, primary: true)
                     Spacer()
                     verifiedDot
@@ -206,7 +206,7 @@ struct GameCard: View {
                         .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
                     Text(game.ballpark.name)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.textSecondary)
+                        .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer()
                     if let conf = game.confirmationNumber {
@@ -282,10 +282,10 @@ struct GameCard: View {
                 .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
             Text(game.date.formatted(.dateTime.day()))
                 .font(.stat(20, weight: .heavy))
-                .foregroundStyle(Theme.textPrimary)
+                .foregroundStyle(.white)
             Text(String(Calendar.current.component(.year, from: game.date)))
                 .font(.stat(11, weight: .semibold))
-                .foregroundStyle(Theme.textMuted)
+                .foregroundStyle(.white.opacity(0.6))
         }
     }
 
@@ -300,7 +300,7 @@ struct GameCard: View {
                         .foregroundStyle(Theme.lights)
                     Text(game.date.formatted(.dateTime.hour().minute()))
                         .font(.stat(14, weight: .heavy))
-                        .foregroundStyle(Theme.textPrimary)
+                        .foregroundStyle(.white)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -320,7 +320,7 @@ struct GameCard: View {
                         )
                     Text(game.scoreString)
                         .font(.stat(14, weight: .heavy))
-                        .foregroundStyle(Theme.textPrimary)
+                        .foregroundStyle(.white)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -343,7 +343,7 @@ struct GameCard: View {
         } else {
             Image(systemName: "questionmark.diamond")
                 .font(.system(size: 11))
-                .foregroundStyle(Theme.textMuted.opacity(0.6))
+                .foregroundStyle(.white.opacity(0.4))
         }
     }
 }
@@ -357,7 +357,7 @@ private struct TeamChip: View {
             TeamLogoView(team: team, size: 22, showGloss: false)
             Text(team.fullName)
                 .font(.stat(11, weight: .heavy))
-                .foregroundStyle(primary ? Theme.textPrimary : Theme.textSecondary)
+                .foregroundStyle(primary ? .white : .white.opacity(0.65))
                 .lineLimit(1)
         }
     }
@@ -389,12 +389,12 @@ private struct EmptyDiaryView: View {
 
             Text("Your diary is waiting.")
                 .font(.scoreboard(24, weight: .black))
-                .foregroundStyle(Theme.textPrimary)
+                .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
 
             Text("Share a ticket screenshot or add a game by hand to begin building your ballpark history.")
                 .font(.system(size: 15))
-                .foregroundStyle(Theme.textSecondary)
+                .foregroundStyle(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
                 .lineSpacing(3)
@@ -430,7 +430,7 @@ private struct EmptyTip: View {
                 .background(Circle().fill(color.opacity(0.14)))
             Text(text)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Theme.textSecondary)
+                .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
