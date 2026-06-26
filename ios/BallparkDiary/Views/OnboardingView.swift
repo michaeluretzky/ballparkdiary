@@ -113,9 +113,7 @@ private struct TeamPickerTile: View {
                 ZStack {
                     Circle().fill(team.primary)
                     Circle().strokeBorder(team.secondary, lineWidth: 2)
-                    Text(team.abbreviation)
-                        .font(.stat(15, weight: .heavy))
-                        .foregroundStyle(.white)
+                    TeamLogoView(team: team, size: 52)
                 }
                 .frame(width: 52, height: 52)
                 .overlay(alignment: .topTrailing) {
@@ -128,7 +126,7 @@ private struct TeamPickerTile: View {
                     }
                 }
 
-                Text(team.name.isEmpty ? team.city : team.name)
+                Text(team.fullName)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)

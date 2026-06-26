@@ -96,12 +96,12 @@ struct ManualGameEntryView: View {
                             FormCard(title: "Your best guess at the score") {
                                 HStack(spacing: 12) {
                                     ScoreStepper(
-                                        label: Team.by(id: awayTeamId)?.abbreviation ?? "AWAY",
+                                        label: Team.by(id: awayTeamId)?.fullName ?? "AWAY",
                                         accent: Team.by(id: awayTeamId)?.primary ?? Theme.clay,
                                         value: $awayScore
                                     )
                                     ScoreStepper(
-                                        label: Team.by(id: resolvedHomeTeamId)?.abbreviation ?? "HOME",
+                                        label: Team.by(id: resolvedHomeTeamId)?.fullName ?? "HOME",
                                         accent: Team.by(id: resolvedHomeTeamId)?.primary ?? Theme.clay,
                                         value: $homeScore
                                     )
@@ -110,8 +110,8 @@ struct ManualGameEntryView: View {
 
                             FormCard(title: "You rooted for") {
                                 Picker("Rooted for", selection: $userRootedForHome) {
-                                    Text(Team.by(id: resolvedHomeTeamId)?.abbreviation ?? "Home").tag(true)
-                                    Text(Team.by(id: awayTeamId)?.abbreviation ?? "Away").tag(false)
+                                    Text(Team.by(id: resolvedHomeTeamId)?.fullName ?? "Home").tag(true)
+                                    Text(Team.by(id: awayTeamId)?.fullName ?? "Away").tag(false)
                                 }
                                 .pickerStyle(.segmented)
                             }
@@ -536,9 +536,7 @@ private struct TeamRow: View {
                     ZStack {
                         Circle().fill(team.primary)
                         Circle().strokeBorder(team.secondary, lineWidth: 1.5)
-                        Text(team.abbreviation)
-                            .font(.stat(11, weight: .heavy))
-                            .foregroundStyle(.white)
+                        TeamLogoView(team: team, size: 28, showGloss: false)
                     }
                     .frame(width: 28, height: 28)
 

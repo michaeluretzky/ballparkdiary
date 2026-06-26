@@ -9,7 +9,7 @@ struct Team: Identifiable, Hashable {
     let primaryHex: String
     let secondaryHex: String
 
-    var fullName: String { "\(city) \(name)" }
+    var fullName: String { city.isEmpty ? name : "\(city) \(name)" }
     var primary: Color { Color(hex: primaryHex) }
     var secondary: Color { Color(hex: secondaryHex) }
 }
@@ -30,7 +30,7 @@ extension Team {
     // AL West
     static let astros     = Team(id: "hou", city: "Houston",      name: "Astros",       abbreviation: "HOU", primaryHex: "#002D62", secondaryHex: "#EB6E1F")
     static let angels     = Team(id: "laa", city: "Los Angeles",  name: "Angels",       abbreviation: "LAA", primaryHex: "#BA0021", secondaryHex: "#003263")
-    static let athletics  = Team(id: "ath", city: "Athletics",    name: "",             abbreviation: "ATH", primaryHex: "#003831", secondaryHex: "#EFB21E")
+    static let athletics  = Team(id: "ath", city: "",             name: "Athletics",    abbreviation: "ATH", primaryHex: "#003831", secondaryHex: "#EFB21E")
     static let mariners   = Team(id: "sea", city: "Seattle",      name: "Mariners",     abbreviation: "SEA", primaryHex: "#0C2C56", secondaryHex: "#005C5C")
     static let rangers    = Team(id: "tex", city: "Texas",        name: "Rangers",      abbreviation: "TEX", primaryHex: "#003278", secondaryHex: "#C0111F")
     // NL East

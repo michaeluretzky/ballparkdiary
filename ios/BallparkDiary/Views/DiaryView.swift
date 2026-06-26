@@ -354,13 +354,11 @@ private struct TeamChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(team.primary)
-                .overlay(Circle().strokeBorder(team.secondary.opacity(0.7), lineWidth: 1))
-                .frame(width: 14, height: 14)
-            Text(team.abbreviation)
-                .font(.stat(12, weight: .heavy))
+            TeamLogoView(team: team, size: 22, showGloss: false)
+            Text(team.fullName)
+                .font(.stat(11, weight: .heavy))
                 .foregroundStyle(primary ? Theme.textPrimary : Theme.textSecondary)
+                .lineLimit(1)
         }
     }
 }

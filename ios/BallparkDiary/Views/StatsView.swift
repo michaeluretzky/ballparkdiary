@@ -526,7 +526,7 @@ private struct OnThisDayCard: View {
                         }
                         .frame(width: 44, height: 44)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(game.awayTeam.abbreviation) \(game.awayScore) – \(game.homeScore) \(game.homeTeam.abbreviation)")
+                            Text("\(game.awayTeam.fullName) \(game.awayScore) – \(game.homeScore) \(game.homeTeam.fullName)")
                                 .font(.scoreboard(15, weight: .bold))
                                 .foregroundStyle(Theme.textPrimary)
                             Text("\(game.ballpark.name) · \(yearsAgoLabel(game.date))")
@@ -575,9 +575,7 @@ private struct LuckyCharmCard: View {
                     ZStack {
                         Circle().fill(charm.team.primary)
                         Circle().strokeBorder(charm.team.secondary, lineWidth: 2)
-                        Text(charm.team.abbreviation)
-                            .font(.stat(14, weight: .heavy))
-                            .foregroundStyle(.white)
+                        TeamLogoView(team: charm.team, size: 52)
                     }
                     .frame(width: 52, height: 52)
                     VStack(alignment: .leading, spacing: 2) {
@@ -685,9 +683,7 @@ private struct TopOpponentCard: View {
                     ZStack {
                         Circle().fill(pair.team.primary)
                         Circle().strokeBorder(pair.team.secondary, lineWidth: 2)
-                        Text(pair.team.abbreviation)
-                            .font(.stat(13, weight: .heavy))
-                            .foregroundStyle(.white)
+                        TeamLogoView(team: pair.team, size: 52)
                     }
                     .frame(width: 52, height: 52)
 

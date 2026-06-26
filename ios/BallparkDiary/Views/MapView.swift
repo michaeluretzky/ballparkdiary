@@ -312,9 +312,7 @@ private struct NextParkBanner: View {
                         Circle()
                             .strokeBorder(park.team.primary, lineWidth: 1.5)
                             .frame(width: 40, height: 40)
-                        Text(park.team.abbreviation)
-                            .font(.stat(9, weight: .heavy))
-                            .foregroundStyle(park.team.primary)
+                        TeamLogoView(team: park.team, size: 28, showGloss: false)
                     }
 
                     VStack(alignment: .leading, spacing: 1) {
@@ -461,7 +459,7 @@ private struct BallparkSnapshotCard: View {
                                 Text(g.date.formatted(Date.FormatStyle.dateTime.month(.abbreviated).day().year()))
                                     .font(.stat(12, weight: .semibold))
                                     .foregroundStyle(Theme.textPrimary)
-                                Text("vs \(g.userRootedForHome ? g.awayTeam.name : g.homeTeam.name)")
+                                Text("vs \(g.userRootedForHome ? g.awayTeam.fullName : g.homeTeam.fullName)")
                                     .font(.system(size: 12))
                                     .foregroundStyle(Theme.textSecondary)
                                 Spacer()

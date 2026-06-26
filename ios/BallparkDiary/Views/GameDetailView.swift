@@ -66,7 +66,7 @@ struct GameDetailView: View {
                         if storeKit.isPremium {
                             ShareLink(
                                 item: shareImage,
-                                preview: SharePreview("\(game.awayTeam.abbreviation) @ \(game.homeTeam.abbreviation)", image: shareImage)
+                                preview: SharePreview("\(game.awayTeam.fullName) @ \(game.homeTeam.fullName)", image: shareImage)
                             ) {
                                 Image(systemName: "square.and.arrow.up")
                             }
@@ -181,9 +181,7 @@ private struct ShareableGameCard: View {
             ZStack {
                 Circle().fill(team.primary)
                 Circle().strokeBorder(team.secondary, lineWidth: 2)
-                Text(team.abbreviation)
-                    .font(.stat(16, weight: .heavy))
-                    .foregroundStyle(.white)
+                TeamLogoView(team: team, size: 60)
             }
             .frame(width: 60, height: 60)
             Text(game.isUpcoming ? "–" : "\(score)")
@@ -269,7 +267,7 @@ private struct Scoreboard: View {
 
     private var resultText: String {
         let team = game.userRootedForHome ? game.homeTeam : game.awayTeam
-        return "\(game.userWon ? "WIN" : "LOSS") · ROOTED FOR \(team.abbreviation)"
+        return "\(game.userWon ? "WIN" : "LOSS") · ROOTED FOR \(team.fullName)"
     }
 
     private var durationString: String {
@@ -289,9 +287,7 @@ private struct TeamColumn: View {
             ZStack {
                 Circle().fill(team.primary)
                 Circle().strokeBorder(team.secondary, lineWidth: 2)
-                Text(team.abbreviation)
-                    .font(.stat(15, weight: .heavy))
-                    .foregroundStyle(.white)
+                TeamLogoView(team: team, size: 56)
             }
             .frame(width: 56, height: 56)
 
@@ -299,7 +295,7 @@ private struct TeamColumn: View {
                 .font(.scoreboard(48, weight: .black))
                 .foregroundStyle(isWinner ? Theme.textPrimary : Theme.textMuted)
 
-            Text(team.name.isEmpty ? team.city : team.name)
+            Text(team.fullName)
                 .font(.caps(10, weight: .semibold))
                 .tracking(1)
                 .foregroundStyle(Theme.textSecondary)
@@ -334,12 +330,11 @@ private struct TicketStubReal: View {
                 .padding(.horizontal, 8)
 
                 // Small logo area
-                Text(game.homeTeam.abbreviation)
-                    .font(.caps(9, weight: .heavy))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .tracking(2)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.trailing, 12)
+                HStack(spacing: 0) {
+                    Spacer()
+                    TeamLogoView(team: game.homeTeam, size: 18, showGloss: false)
+                        .padding(.trailing, 12)
+                }
             }
 
             // Main stub body
@@ -347,15 +342,17 @@ private struct TicketStubReal: View {
                 // Left content
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
-                        Text(game.awayTeam.abbreviation)
-                            .font(.scoreboard(14, weight: .black))
+                        Text(game.awayTeam.fullName)
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Theme.parchmentInk)
+                            .lineLimit(1)
                         Text("@")
                             .font(.system(size: 10, weight: .heavy))
                             .foregroundStyle(Theme.parchmentInk.opacity(0.5))
-                        Text(game.homeTeam.abbreviation)
-                            .font(.scoreboard(14, weight: .black))
+                        Text(game.homeTeam.fullName)
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Theme.parchmentInk)
+                            .lineLimit(1)
                         if !game.isUpcoming {
                             Text(game.scoreString)
                                 .font(.stat(12, weight: .heavy))
@@ -508,28 +505,6 @@ private struct BallparkPanel: View {
                 .clipShape(.rect(cornerRadius: 12))
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
-
-            if game.hasSeatInfo {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "eyes")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Theme.lights)
-                        Text("Your view")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Theme.lights.opacity(0.8))
-                        Spacer()
-                        Text("Section \(game.section)")
-                            .font(.stat(10, weight: .semibold))
-                            .foregroundStyle(Theme.textMuted)
-                    }
-                    SeatPerspectiveView(game: game)
-                        .frame(height: 140)
-                        .clipShape(.rect(cornerRadius: 12))
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-            }
 
             Text(game.ballpark.trivia)
                 .font(.system(size: 13))
