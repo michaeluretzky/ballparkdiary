@@ -1,28 +1,42 @@
 import SwiftUI
 
-/// A premium sports-style circular team badge — replaces plain text abbreviations
-/// across the app with a distinctive, official-feeling logo treatment.
+/// A team-colored circular badge showing each MLB club's distinctive cap
+/// letter mark — "NY" for Yankees, "LA" for Dodgers, "B" for Red Sox, etc.
 ///
-/// Shows the team's primary color with a baseball icon, secondary-color border,
-/// and a subtle gloss highlight on top. Works at any size and adapts to both
-/// light-on-dark and dark-on-light contexts.
+/// Every team gets a unique letter treatment sized proportionally to the
+/// character count, so 3-letter marks like "STL" stay readable even at
+/// compact sizes. The background uses the team's primary color with a
+/// subtle gradient, ringed in the secondary color, with an optional
+/// gloss highlight on larger variants.
 struct TeamLogoView: View {
     let team: Team
     var size: CGFloat = 56
     var showGloss: Bool = true
 
-    private var iconSize: CGFloat { size * 0.38 }
+    // Adaptive font size — wider marks need smaller type to fit
+    private var fontSize: CGFloat {
+        let base: CGFloat
+        switch team.logoMark.count {
+        case 1:  base = size * 0.50
+        case 2:  base = size * 0.40
+        default: base = size * 0.30
+        }
+        // "SOX" and "STL" are tighter; bump them down slightly more
+        if team.logoMark.count >= 3 { return base * 0.90 }
+        return base
+    }
+
     private var lineWidth: CGFloat { max(1.5, size * 0.035) }
 
     var body: some View {
         ZStack {
-            // Soft outer glow — visible when the logo sits on a dark card
+            // Subtle outer glow — visible against dark card backgrounds
             Circle()
                 .fill(team.primary.opacity(0.22))
                 .frame(width: size + 10, height: size + 10)
                 .blur(radius: 8)
 
-            // Main fill — subtle top-to-bottom gradient for depth
+            // Team-primary fill with diagonal gradient for depth
             Circle()
                 .fill(
                     LinearGradient(
@@ -32,7 +46,7 @@ struct TeamLogoView: View {
                     )
                 )
 
-            // Border ring in secondary color
+            // Secondary-color border ring
             Circle()
                 .strokeBorder(
                     LinearGradient(
@@ -43,7 +57,15 @@ struct TeamLogoView: View {
                     lineWidth: lineWidth
                 )
 
-            // Gloss arc — top-left highlight that reads as light reflection
+            // Team letter mark — white, bold, slightly shadowed
+            Text(team.logoMark)
+                .font(.system(size: fontSize, weight: .black, design: .default))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+
+            // Gloss arc — top-left highlight for larger sizes
             if showGloss {
                 Circle()
                     .trim(from: 0, to: 0.48)
@@ -51,19 +73,13 @@ struct TeamLogoView: View {
                     .rotationEffect(.degrees(-40))
                     .padding(size * 0.1)
             }
-
-            // Baseball icon — white, bold, slightly shadowed
-            Image(systemName: "baseball.fill")
-                .font(.system(size: iconSize, weight: .black))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
         }
         .frame(width: size, height: size)
     }
 }
 
-/// Convenience initializer for shorthand use — matches the size of the old
-/// abbreviation circles so layout doesn't shift.
+/// Convenience initializer for chip / row contexts where a compact
+/// badge replaces the old abbreviation circle without shifting layout.
 extension TeamLogoView {
     /// A compact logo suitable for chip / row contexts (e.g. 28pt).
     static func compact(_ team: Team, size: CGFloat = 28) -> TeamLogoView {
