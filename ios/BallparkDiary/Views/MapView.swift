@@ -456,7 +456,7 @@ private struct BallparkSnapshotCard: View {
                                 Image(systemName: g.userWon ? "trophy.fill" : "circle.dotted")
                                     .font(.system(size: 11))
                                     .foregroundStyle(g.userWon ? Theme.lights : Theme.textMuted)
-                                Text(g.date.formatted(Date.FormatStyle.dateTime.month(.abbreviated).day().year()))
+                                Text(g.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted)))
                                     .font(.stat(12, weight: .semibold))
                                     .foregroundStyle(Theme.textPrimary)
                                 Text("vs \(g.userRootedForHome ? g.awayTeam.fullName : g.homeTeam.fullName)")

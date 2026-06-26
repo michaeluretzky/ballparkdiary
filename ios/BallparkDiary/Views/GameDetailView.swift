@@ -127,7 +127,7 @@ private struct ShareableGameCard: View {
                 .tracking(6)
                 .foregroundStyle(Theme.clay)
 
-            Text(game.date.formatted(Date.FormatStyle.dateTime.month(.abbreviated).day().year()))
+            Text(game.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted)))
                 .font(.caps(11, weight: .heavy))
                 .tracking(3)
                 .foregroundStyle(Theme.lights)

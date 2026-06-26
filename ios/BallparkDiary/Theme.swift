@@ -75,12 +75,12 @@ enum Theme {
 
 // MARK: - Typography
 //
-// Typographic hierarchy inspired by classic baseball programs and modern
-// scoreboard design — structured and official without feeling stiff.
+// Structured, official typographic hierarchy — clean sans-serif throughout
+// for a modern athletic scoreboard feel. No newspaper serifs.
 //
 // Roles:
-//   display   — biggest numbers (scores, hero counts) · serif
-//   headline  — section titles, ballpark names · serif
+//   display   — biggest numbers (scores, hero counts) · heavy system
+//   headline  — section titles, ballpark names · bold system
 //   scoreboard — compact athletic label (W/L, team abbreviations) · default
 //   stat      — tabular monospaced numbers · default
 //   body      — paragraph text · default
@@ -88,18 +88,15 @@ enum Theme {
 //   caps      — tracked uppercase label · default
 
 extension Font {
-    /// Classic newspaper serif for hero numbers — authoritative and timeless.
-    /// Georgia carries the weight of real print journalism, not a design tool's default.
-    static func display(_ size: CGFloat, weight: Font.Weight = .black) -> Font {
-        Font.custom("Georgia-Bold", size: size)
+    /// Hero numbers — heavy, structured, authoritative.
+    static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
+        .system(size: size, weight: weight, design: .default)
     }
 
-    /// Georgia headline for section titles, ballpark names, and card headers.
-    /// The same face used by newspapers and official scorecards for decades.
+    /// Section titles, ballpark names, card headers — bold and official.
     static func headline(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        Font.custom("Georgia-Bold", size: size)
+        .system(size: size, weight: weight, design: .default)
     }
-
 
     /// Compact athletic label — scores, team abbreviations, win/loss markers.
     /// Structured default design reads clean and official on dark backgrounds.
@@ -108,7 +105,7 @@ extension Font {
     }
 
     /// Tabular, monospaced digits for stat numbers.
-    static func stat(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
+    static func stat(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight, design: .default).monospacedDigit()
     }
 

@@ -374,7 +374,7 @@ private struct NotFoundNotice: View {
                     .foregroundStyle(Theme.lights)
                 Spacer()
             }
-            Text("We couldn't find a game between \(Team.by(id: home)?.fullName ?? home) and \(Team.by(id: away)?.fullName ?? away) on \(date.formatted(Date.FormatStyle.dateTime.month(.abbreviated).day().year())).")
+            Text("We couldn't find a game between \(Team.by(id: home)?.fullName ?? home) and \(Team.by(id: away)?.fullName ?? away) on \(date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted))).")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
