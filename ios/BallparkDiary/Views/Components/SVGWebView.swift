@@ -81,16 +81,15 @@ struct SVGWebView: UIViewRepresentable {
                     * { margin: 0; padding: 0; box-sizing: border-box; }
                     html, body {
                         width: 100%; height: 100%;
-                        background: transparent;
+                        background: transparent !important;
                         display: flex;
                         align-items: center;
                         justify-content: center;
+                        padding: 2px;
                     }
                     svg {
-                        max-width: 100%;
-                        max-height: 100%;
-                        width: auto;
-                        height: auto;
+                        width: 100% !important;
+                        height: 100% !important;
                         display: block;
                     }
                     </style>

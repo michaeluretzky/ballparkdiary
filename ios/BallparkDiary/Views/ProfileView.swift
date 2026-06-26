@@ -35,6 +35,11 @@ struct ProfileView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
 
+                        // Legal disclaimer
+                        legalDisclaimer
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+
                         Color.clear.frame(height: 30)
                     }
                     .padding(.top, 8)
@@ -269,6 +274,24 @@ struct ProfileView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textMuted)
                 .padding(.horizontal, 4)
+        }
+    }
+
+    // MARK: - Legal
+
+    private var legalDisclaimer: some View {
+        VStack(spacing: 10) {
+            Divider().background(Color.white.opacity(0.08))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("About Ballpark Diary")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textMuted)
+                Text("Ballpark Diary is an independent personal journal app. It is not affiliated with, endorsed by, sponsored by, or associated with Major League Baseball, any MLB team, any MLB player, or any other sports organization. All team names, logos, and trademarks are the property of their respective owners and are used for informational and identification purposes only. This app does not imply any partnership or endorsement by any professional sports league or team.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textMuted.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 4)
         }
     }
 }

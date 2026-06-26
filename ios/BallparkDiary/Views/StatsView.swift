@@ -68,6 +68,9 @@ struct StatsView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
             .refreshable { await store.refresh(force: true) }
+            .navigationDestination(for: AttendedGame.self) { game in
+                GameDetailView(game: game)
+            }
             .sheet(isPresented: $showPaywall) {
                 PaywallView(store: storeKit)
             }
@@ -547,7 +550,6 @@ private struct OnThisDayCard: View {
         }
         .padding(16)
         .nightCardDeep()
-        .navigationDestination(for: AttendedGame.self) { GameDetailView(game: $0) }
     }
 
     private func yearsAgo(_ date: Date) -> Int {

@@ -97,6 +97,15 @@ struct DiaryView: View {
                     }
 
                     Color.clear.frame(height: 40)
+
+                    if !store.games.isEmpty {
+                        Text("Ballpark Diary is an independent app. Not affiliated with or endorsed by Major League Baseball, any MLB team, or any player.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.25))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                            .padding(.bottom, 20)
+                    }
                 }
             }
             .background {

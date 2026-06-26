@@ -433,6 +433,16 @@ final class DiaryStore {
         }
     }
 
+    /// Look up a game by its ID across all inboxes. Returns nil if not found.
+    /// Use this instead of passing AttendedGame value types through navigation
+    /// when the game may be mutated by the store (e.g. rooted-for changes).
+    func game(id: UUID) -> AttendedGame? {
+        for list in gamesByInbox.values {
+            if let game = list.first(where: { $0.id == id }) { return game }
+        }
+        return nil
+    }
+
     /// Delete a single game by ID regardless of source (shared or manual).
     /// Updates the owning inbox's ticket count.
     func deleteGame(_ id: UUID) {

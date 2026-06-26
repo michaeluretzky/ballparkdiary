@@ -244,7 +244,7 @@ private struct Scoreboard: View {
             } else {
                 HStack(spacing: 8) {
                     Capsule()
-                        .fill(game.userWon ? Theme.grass : Theme.foul)
+                        .fill(liveGame.userWon ? Theme.grass : Theme.foul)
                         .frame(width: 6, height: 6)
                     Menu {
                         Picker("Rooted for", selection: rootedForBinding) {
@@ -259,7 +259,7 @@ private struct Scoreboard: View {
                             Image(systemName: "chevron.up.chevron.down")
                                 .font(.system(size: 9, weight: .heavy))
                         }
-                        .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
+                        .foregroundStyle(liveGame.userWon ? Theme.grass : Theme.foul)
                     }
                     Spacer()
                     if game.attendance > 0 || game.durationMinutes > 0 {
@@ -275,9 +275,12 @@ private struct Scoreboard: View {
         .nightCard()
     }
 
+    /// The live copy of this game from the store — always up to date.
+    private var liveGame: AttendedGame { store.game(id: game.id) ?? game }
+
     private var rootedForBinding: Binding<Bool> {
         Binding(
-            get: { game.userRootedForHome },
+            get: { liveGame.userRootedForHome },
             set: { store.setRootedForHome(game.id, rootedForHome: $0) }
         )
     }
@@ -290,8 +293,9 @@ private struct Scoreboard: View {
     }
 
     private var resultText: String {
-        let team = game.userRootedForHome ? game.homeTeam : game.awayTeam
-        return "\(game.userWon ? "WIN" : "LOSS") · ROOTED FOR \(team.fullName)"
+        let team = liveGame.userRootedForHome ? game.homeTeam : game.awayTeam
+        let won = liveGame.userWon
+        return "\(won ? "WIN" : "LOSS") · ROOTED FOR \(team.fullName)"
     }
 
     private var durationString: String {

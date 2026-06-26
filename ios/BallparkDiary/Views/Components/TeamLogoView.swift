@@ -11,9 +11,10 @@ struct TeamLogoView: View {
 
     @State private var imageLoadFailed = false
     @State private var imageLoaded = false
+    @State private var hasAppeared = false
 
     private var lineWidth: CGFloat { max(1.5, size * 0.035) }
-    private var innerPadding: CGFloat { size * 0.16 }
+    private var innerPadding: CGFloat { size * 0.18 }
 
     var body: some View {
         ZStack {
@@ -40,14 +41,15 @@ struct TeamLogoView: View {
                     lineWidth: lineWidth
                 )
 
-            // Official team logo from MLB CDN, or fallback letter mark
-            if !imageLoadFailed, let url = team.logoURL {
+            // Official team logo from MLB CDN, or fallback letter mark.
+            // Defer WKWebView creation until the view has appeared on screen
+            // to avoid crashes from rapid init/destroy cycles (e.g. StatsView).
+            if !imageLoadFailed, let url = team.logoURL, hasAppeared {
                 SVGWebView(url: url, onLoaded: { imageLoaded = true }, onFailed: { imageLoadFailed = true })
                     .frame(
                         width: size - innerPadding * 2,
                         height: size - innerPadding * 2
                     )
-                    .clipShape(Circle())
                     .opacity(imageLoaded ? 1 : 0)
                     .allowsHitTesting(false)
             } else {
@@ -72,6 +74,12 @@ struct TeamLogoView: View {
         }
         .frame(width: size, height: size)
         .contentShape(.circle)
+        .onAppear {
+            // Small delay lets the layout settle before creating WKWebView.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                hasAppeared = true
+            }
+        }
     }
 
     // MARK: - Fallback
