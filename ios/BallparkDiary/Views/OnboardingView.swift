@@ -287,6 +287,18 @@ private struct HeroPanel: View {
         .sheet(isPresented: $showManualSheet) {
             ManualGameEntryView()
         }
+        .onChange(of: store.requestedManualEntry) { _, shouldOpen in
+            if shouldOpen {
+                showManualSheet = true
+                store.requestedManualEntry = false
+            }
+        }
+        .onAppear {
+            if store.requestedManualEntry {
+                showManualSheet = true
+                store.requestedManualEntry = false
+            }
+        }
     }
 }
 

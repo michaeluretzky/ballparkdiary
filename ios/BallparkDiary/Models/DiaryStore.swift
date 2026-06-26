@@ -35,6 +35,10 @@ final class DiaryStore {
     /// Non-nil when a deep-link requests a tab switch. Observed by MainTabsView.
     var requestedTab: String? = nil
 
+    /// True when the share extension deep-link should open the manual-entry sheet.
+    /// Observed by InboxesView to auto-present ManualGameEntryView.
+    var requestedManualEntry: Bool = false
+
     /// Local retry tracking for shared ticket payloads (in-memory only).
     private var importAttempts: [String: (count: Int, firstSeen: Date)] = [:]
 

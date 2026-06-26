@@ -294,12 +294,17 @@ struct ShareView: View {
     }
 
     /// Opens the main Ballpark Diary app via its custom URL scheme.
+    /// Dismisses the extension afterward so the user lands in the main app.
     private func openApp() {
         guard let url = URL(string: "ballparkdiary://import") else {
             close()
             return
         }
-        extensionContext?.open(url, completionHandler: nil)
+        // The completion handler is critical — without it, open(_:completionHandler:)
+        // can silently fail on some iOS versions. Dismiss the extension afterward.
+        extensionContext?.open(url) { [extensionContext] _ in
+            extensionContext?.completeRequest(returningItems: nil)
+        }
     }
 
     private func close() {

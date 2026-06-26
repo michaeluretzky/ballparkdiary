@@ -70,6 +70,20 @@ struct InboxesView: View {
             .sheet(isPresented: $showPaywall) {
                 PaywallView(store: storeKit)
             }
+            .onChange(of: store.requestedManualEntry) { _, shouldOpen in
+                if shouldOpen {
+                    showManualSheet = true
+                    store.requestedManualEntry = false
+                }
+            }
+            .onAppear {
+                // Handle the case where the flag was set before this view rendered
+                // (e.g. the tab switch from a deep link hasn't completed yet).
+                if store.requestedManualEntry {
+                    showManualSheet = true
+                    store.requestedManualEntry = false
+                }
+            }
         }
     }
 }

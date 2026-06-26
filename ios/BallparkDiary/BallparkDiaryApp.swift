@@ -27,12 +27,12 @@ struct BallparkDiaryApp: App {
                     await store.refresh()
                 }
                 .onOpenURL { _ in
-                    // Opened from share extension — refresh then switch to Diary tab.
-                    // Force past the throttle: the user just shared a ticket and
-                    // expects it to import right now.
+                    // Opened from share extension — refresh, switch to Sources tab,
+                    // and auto-open the New Ticket sheet so the user can enter details.
                     Task {
                         await store.refresh(force: true)
-                        store.requestedTab = "diary"
+                        store.requestedTab = "inboxes"
+                        store.requestedManualEntry = true
                     }
                 }
                 .onChange(of: scenePhase) { _, newPhase in
