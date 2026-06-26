@@ -61,6 +61,22 @@ struct AttendedGame: Identifiable, Hashable, Codable {
         [section, row, seat].contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty && $0 != "—" }
     }
 
+    /// Return a copy with the user's rooting interest changed to the given side.
+    func rooting(forHome rootedForHome: Bool) -> AttendedGame {
+        AttendedGame(
+            id: id, date: date, ballparkId: ballparkId,
+            homeTeamId: homeTeamId, awayTeamId: awayTeamId,
+            homeScore: homeScore, awayScore: awayScore,
+            userRootedForHome: rootedForHome,
+            section: section, row: row, seat: seat, confirmation: confirmation,
+            weather: weather, firstPitchTempF: firstPitchTempF,
+            attendance: attendance, durationMinutes: durationMinutes,
+            highlights: highlights, milestones: milestones,
+            emailSubject: emailSubject, source: source, status: status,
+            isVerified: isVerified
+        )
+    }
+
     /// Promote an upcoming game to completed once its real final score is known.
     func completed(homeScore: Int, awayScore: Int) -> AttendedGame {
         AttendedGame(

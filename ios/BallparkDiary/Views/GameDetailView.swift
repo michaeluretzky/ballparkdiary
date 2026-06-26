@@ -199,6 +199,7 @@ private struct ShareableGameCard: View {
 // MARK: - Scoreboard
 
 private struct Scoreboard: View {
+    @Environment(DiaryStore.self) private var store
     let game: AttendedGame
 
     var body: some View {
@@ -245,10 +246,21 @@ private struct Scoreboard: View {
                     Capsule()
                         .fill(game.userWon ? Theme.grass : Theme.foul)
                         .frame(width: 6, height: 6)
-                    Text(resultText)
-                        .font(.caps(11, weight: .heavy))
-                        .tracking(1.5)
+                    Menu {
+                        Picker("Rooted for", selection: rootedForBinding) {
+                            Text(game.awayTeam.fullName).tag(false)
+                            Text(game.homeTeam.fullName).tag(true)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(resultText)
+                                .font(.caps(11, weight: .heavy))
+                                .tracking(1.5)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9, weight: .heavy))
+                        }
                         .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
+                    }
                     Spacer()
                     if game.attendance > 0 || game.durationMinutes > 0 {
                         Text(metaString)
@@ -261,6 +273,13 @@ private struct Scoreboard: View {
         }
         .padding(16)
         .nightCard()
+    }
+
+    private var rootedForBinding: Binding<Bool> {
+        Binding(
+            get: { game.userRootedForHome },
+            set: { store.setRootedForHome(game.id, rootedForHome: $0) }
+        )
     }
 
     private var metaString: String {

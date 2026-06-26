@@ -418,6 +418,21 @@ final class DiaryStore {
         return game
     }
 
+    /// Update which team the user rooted for on a saved game. Flips the
+    /// win/loss outcome derived from `userWon` so stats stay correct.
+    func setRootedForHome(_ id: UUID, rootedForHome: Bool) {
+        for (inboxId, list) in gamesByInbox {
+            guard let index = list.firstIndex(where: { $0.id == id }) else { continue }
+            let g = list[index]
+            guard g.userRootedForHome != rootedForHome else { return }
+            var updated = list
+            updated[index] = g.rooting(forHome: rootedForHome)
+            gamesByInbox[inboxId] = updated
+            save()
+            return
+        }
+    }
+
     /// Delete a single game by ID regardless of source (shared or manual).
     /// Updates the owning inbox's ticket count.
     func deleteGame(_ id: UUID) {
