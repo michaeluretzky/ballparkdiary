@@ -8,7 +8,7 @@ import RevenueCat
 ///
 /// To grant Pro access to specific users without purchase, create a Customer
 /// in the RevenueCat dashboard (RevenueCat → Customers → + New) and grant the
-/// "premium" entitlement. The user's App User ID can be found in Xcode logs
+/// "pro" entitlement. The user's App User ID can be found in Xcode logs
 /// (search for "Purchases" — the ID is logged on configure). You can also
 /// create Offering Overrides to give specific customers a free or discounted
 /// price for the lifetime package.
@@ -21,7 +21,7 @@ final class StoreViewModel {
     var isPurchasing: Bool = false
     var error: String?
 
-    private let entitlementID = "premium"
+    private let entitlementID = "pro"
 
     init() {
         Task { await listenForUpdates() }
