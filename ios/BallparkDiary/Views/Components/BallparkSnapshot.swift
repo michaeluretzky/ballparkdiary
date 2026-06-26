@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Displays a real photo of the ballpark when available, falling back
-/// to the hand-drawn stadium illustration. Used as the hero image on
-/// diary cards and the game-detail ballpark panel.
+/// Displays a real Wikipedia Commons photo of the ballpark.
+/// Falls back to a hand-drawn illustration if the photo fails to load.
 struct BallparkSnapshot: View {
     let ballpark: Ballpark
     var span: Double = 0.0065 // kept for API compatibility
@@ -10,9 +9,7 @@ struct BallparkSnapshot: View {
     private var teamColor: Color { ballpark.team.primary }
 
     var body: some View {
-        if let assetName = ballpark.photoAssetName {
-            BundledStadiumPhoto(assetName: assetName, ballpark: ballpark, teamColor: teamColor)
-        } else if let photoURL = ballpark.photoURL {
+        if let photoURL = ballpark.photoURL {
             RealStadiumPhoto(url: photoURL, teamColor: teamColor, ballpark: ballpark)
         } else {
             StadiumIllustration(
@@ -74,29 +71,6 @@ private struct RealStadiumPhoto: View {
                     endPoint: .trailing
                 )
             )
-    }
-}
-
-// MARK: - Bundled stadium photo from Assets.xcassets
-
-private struct BundledStadiumPhoto: View {
-    let assetName: String
-    let ballpark: Ballpark
-    let teamColor: Color
-
-    var body: some View {
-        if let uiImage = UIImage(named: assetName) {
-            Image(uiImage: uiImage)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-        } else {
-            // Asset not found yet — fall back to illustration
-            StadiumIllustration(
-                ballpark: ballpark,
-                teamColor: teamColor,
-                teamSecondary: ballpark.team.secondary
-            )
-        }
     }
 }
 

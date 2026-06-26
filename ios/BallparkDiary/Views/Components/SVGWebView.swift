@@ -2,15 +2,15 @@ import SwiftUI
 import WebKit
 
 /// Renders an SVG logo from a URL inside a transparent WKWebView.
-/// Wraps the SVG in an HTML page so it fills the view reliably and
-/// renders with a transparent background.
+/// Fetches the SVG data inline so it loads reliably without cross-origin
+/// restrictions, then embeds it in an HTML page with a transparent background.
 struct SVGWebView: UIViewRepresentable {
     let url: URL
     var onLoaded: (() -> Void)? = nil
     var onFailed: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onLoaded: onLoaded, onFailed: onFailed)
+        Coordinator(url: url, onLoaded: onLoaded, onFailed: onFailed)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -26,35 +26,19 @@ struct SVGWebView: UIViewRepresentable {
         webView.isUserInteractionEnabled = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
 
+        context.coordinator.load(in: webView)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        guard context.coordinator.currentURL != url else { return }
-        context.coordinator.currentURL = url
-        context.coordinator.hasLoaded = false
-
-        let html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-        <style>
-        * { margin: 0; padding: 0; }
-        html, body { width: 100%; height: 100%; background: transparent; }
-        img { display: block; width: 100%; height: 100%; object-fit: contain; }
-        </style>
-        </head>
-        <body>
-        <img src="\(url.absoluteString)" />
-        </body>
-        </html>
-        """
-
-        webView.loadHTMLString(html, baseURL: nil)
+        if context.coordinator.targetURL != url {
+            context.coordinator.targetURL = url
+            context.coordinator.load(in: webView)
+        }
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.cancel()
         webView.stopLoading()
         webView.navigationDelegate = nil
     }
@@ -62,31 +46,77 @@ struct SVGWebView: UIViewRepresentable {
     // MARK: - Coordinator
 
     class Coordinator: NSObject, WKNavigationDelegate {
-        var currentURL: URL?
-        var hasLoaded = false
+        var targetURL: URL
         let onLoaded: (() -> Void)?
         let onFailed: (() -> Void)?
+        private var task: URLSessionDataTask?
+        private var hasCalledLoaded = false
+        private var hasCalledFailed = false
 
-        init(onLoaded: (() -> Void)?, onFailed: (() -> Void)?) {
+        init(url: URL, onLoaded: (() -> Void)?, onFailed: (() -> Void)?) {
+            self.targetURL = url
             self.onLoaded = onLoaded
             self.onFailed = onFailed
         }
 
+        func load(in webView: WKWebView) {
+            cancel()
+            hasCalledLoaded = false
+            hasCalledFailed = false
+
+            task = URLSession.shared.dataTask(with: targetURL) { [weak self] data, _, error in
+                guard let self else { return }
+                if let data, let svgStr = String(data: data, encoding: .utf8),
+                   !svgStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    let html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+                    <style>
+                    * { margin: 0; padding: 0; }
+                    html, body { width: 100%; height: 100%; background: transparent; }
+                    svg { display: block; width: 100%; height: 100%; }
+                    </style>
+                    </head>
+                    <body>\(svgStr)</body>
+                    </html>
+                    """
+                    DispatchQueue.main.async {
+                        webView.loadHTMLString(html, baseURL: self.targetURL)
+                    }
+                } else {
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, !self.hasCalledFailed else { return }
+                        self.hasCalledFailed = true
+                        self.onFailed?()
+                    }
+                }
+            }
+            task?.resume()
+        }
+
+        func cancel() {
+            task?.cancel()
+            task = nil
+        }
+
+        // MARK: - WKNavigationDelegate
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard !hasLoaded else { return }
-            hasLoaded = true
-            // Brief delay so the <img> has time to decode and paint
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard !hasCalledLoaded else { return }
+            hasCalledLoaded = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
                 self?.onLoaded?()
             }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            if !hasLoaded { onFailed?() }
+            if !hasCalledFailed { hasCalledFailed = true; onFailed?() }
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            onFailed?()
+            if !hasCalledFailed { hasCalledFailed = true; onFailed?() }
         }
     }
 }
