@@ -1,42 +1,30 @@
 import SwiftUI
 
-/// A team-colored circular badge showing each MLB club's distinctive cap
-/// letter mark — "NY" for Yankees, "LA" for Dodgers, "B" for Red Sox, etc.
-///
-/// Every team gets a unique letter treatment sized proportionally to the
-/// character count, so 3-letter marks like "STL" stay readable even at
-/// compact sizes. The background uses the team's primary color with a
-/// subtle gradient, ringed in the secondary color, with an optional
-/// gloss highlight on larger variants.
+/// A team-colored circular badge showing the official MLB team logo
+/// loaded from the league's CDN, encircled in the team's primary and
+/// secondary colors. Falls back to the cap letter mark if the logo
+/// fails to load.
 struct TeamLogoView: View {
     let team: Team
     var size: CGFloat = 56
     var showGloss: Bool = true
 
-    // Adaptive font size — wider marks need smaller type to fit
-    private var fontSize: CGFloat {
-        let base: CGFloat
-        switch team.logoMark.count {
-        case 1:  base = size * 0.50
-        case 2:  base = size * 0.40
-        default: base = size * 0.30
-        }
-        // "SOX" and "STL" are tighter; bump them down slightly more
-        if team.logoMark.count >= 3 { return base * 0.90 }
-        return base
-    }
+    @State private var imageLoadFailed = false
+    @State private var imageLoaded = false
 
     private var lineWidth: CGFloat { max(1.5, size * 0.035) }
 
+    private var innerPadding: CGFloat { size * 0.16 }
+
     var body: some View {
         ZStack {
-            // Subtle outer glow — visible against dark card backgrounds
+            // Subtle outer glow
             Circle()
                 .fill(team.primary.opacity(0.22))
                 .frame(width: size + 10, height: size + 10)
                 .blur(radius: 8)
 
-            // Team-primary fill with diagonal gradient for depth
+            // Team-primary fill with subtle gradient
             Circle()
                 .fill(
                     LinearGradient(
@@ -57,13 +45,18 @@ struct TeamLogoView: View {
                     lineWidth: lineWidth
                 )
 
-            // Team letter mark — white, bold, slightly shadowed
-            Text(team.logoMark)
-                .font(.system(size: fontSize, weight: .black, design: .default))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
+            // Official team logo from MLB CDN, or fallback letter mark
+            if !imageLoadFailed, let url = team.logoURL {
+                SVGWebView(url: url, onLoaded: { imageLoaded = true }, onFailed: { imageLoadFailed = true })
+                    .frame(
+                        width: size - innerPadding * 2,
+                        height: size - innerPadding * 2
+                    )
+                    .clipShape(Circle())
+                    .opacity(imageLoaded ? 1 : 0)
+            } else {
+                fallbackLetterMark
+            }
 
             // Gloss arc — top-left highlight for larger sizes
             if showGloss {
@@ -76,10 +69,31 @@ struct TeamLogoView: View {
         }
         .frame(width: size, height: size)
     }
+
+    // MARK: - Fallback
+
+    private var fallbackLetterMark: some View {
+        Text(team.logoMark)
+            .font(.system(size: fontSize, weight: .black, design: .default))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
+            .minimumScaleFactor(0.5)
+            .lineLimit(1)
+    }
+
+    private var fontSize: CGFloat {
+        let base: CGFloat
+        switch team.logoMark.count {
+        case 1:  base = size * 0.50
+        case 2:  base = size * 0.40
+        default: base = size * 0.30
+        }
+        if team.logoMark.count >= 3 { return base * 0.90 }
+        return base
+    }
 }
 
-/// Convenience initializer for chip / row contexts where a compact
-/// badge replaces the old abbreviation circle without shifting layout.
+/// Convenience initializer for chip / row contexts.
 extension TeamLogoView {
     /// A compact logo suitable for chip / row contexts (e.g. 28pt).
     static func compact(_ team: Team, size: CGFloat = 28) -> TeamLogoView {

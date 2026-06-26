@@ -19,6 +19,12 @@ struct Ballpark: Identifiable, Hashable {
     let illustration: IllustrationStyle
     let trivia: String
 
+    /// Real stadium photo from Wikipedia Commons (640px thumbnail).
+    var photoURL: URL? { Self.photoURLs[id] }
+
+    /// Locally bundled stadium photo asset (generated or curated).
+    var photoAssetName: String? { Self.photoAssets[id] }
+
     var coordinate: CLLocationCoordinate2D {
         .init(latitude: latitude, longitude: longitude)
     }
@@ -92,6 +98,46 @@ extension Ballpark {
     static func by(teamId: String) -> Ballpark? {
         all.first(where: { $0.team.id == teamId })
     }
+
+    // MARK: - Stadium photos (Wikipedia Commons)
+
+    /// Locally bundled stadium photos (generated images in Assets.xcassets).
+    static let photoAssets: [String: String] = [
+        "citi-field":               "citi_field_baseball_stadium",
+        "citizens-bank-park":        "citizens_bank_park",
+        "american-family-field":     "exterior_professional_architectural",
+        "target-field":              "target_field_stadium",
+        "rate-field":                "guaranteed_rate_field_stadium",
+        "minute-maid-park":          "astros_stadium_houston",
+        "globe-life-field":          "globe_life_field_stadium",
+        "busch-stadium":             "busch_stadium_cardinals",
+        "great-american-ball-park":  "great_american_ball_park",
+        "chase-field":               "chase_field_stadium",
+        "coors-field":               "coors_field_stadium",
+        "t-mobile-park":             "tmobile_park_stadium",
+        "sutter-health-park":        "baseball_stadium_tower_bridge",
+    ]
+
+    /// Real stadium photos from Wikipedia Commons (640px thumbnails).
+    static let photoURLs: [String: URL] = [
+        "yankee-stadium":       URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Yankee_Stadium_overhead_2010.jpg/640px-Yankee_Stadium_overhead_2010.jpg")!,
+        "fenway-park":          URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/131023-F-PR861-033_Hanscom_participates_in_World_Series_pregame_events.jpg/640px-131023-F-PR861-033_Hanscom_participates_in_World_Series_pregame_events.jpg")!,
+        "wrigley-field":        URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Wrigley_Field_in_line_with_sign.jpg/640px-Wrigley_Field_in_line_with_sign.jpg")!,
+        "dodger-stadium":       URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Dodger_Stadium_and_Chavez_Ravine_far_view,_Chicago_Cubs_at_Los_Angeles_Dodgers,_(April_12,_2025).jpg/640px-Dodger_Stadium_and_Chavez_Ravine_far_view,_Chicago_Cubs_at_Los_Angeles_Dodgers,_(April_12,_2025).jpg")!,
+        "oracle-park":          URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Oracle_Park_2021.jpg/640px-Oracle_Park_2021.jpg")!,
+        "camden-yards":         URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/OrioleParkatCamdenYardsSummer2025.jpg/640px-OrioleParkatCamdenYardsSummer2025.jpg")!,
+        "pnc-park":             URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Pittsburgh_Pirates_park_%28Unsplash%29.jpg/640px-Pittsburgh_Pirates_park_%28Unsplash%29.jpg")!,
+        "truist-park":          URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Truist_Park_2025.jpg/640px-Truist_Park_2025.jpg")!,
+        "nationals-park":       URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Nationals_Park_8.16.19_-_7.jpg/640px-Nationals_Park_8.16.19_-_7.jpg")!,
+        "loandepot-park":       URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/LOAN_DEPOT_PARK.jpg/640px-LOAN_DEPOT_PARK.jpg")!,
+        "tropicana-field":      URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/PXL_20220528_205520913.jpg/640px-PXL_20220528_205520913.jpg")!,
+        "rogers-centre":        URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Rogers_Centre,_Toronto,_Ontario_%2821652480228%29.jpg/640px-Rogers_Centre,_Toronto,_Ontario_%2821652480228%29.jpg")!,
+        "progressive-field":    URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/2016-10-06_Progressive_Field_before_ALDS_Game_1_between_Cleveland_and_Boston.jpg/640px-2016-10-06_Progressive_Field_before_ALDS_Game_1_between_Cleveland_and_Boston.jpg")!,
+        "comerica-park":        URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Comerica_Park,_Home_of_the_Detroit_Tigers_Baseball_Team.jpg/640px-Comerica_Park,_Home_of_the_Detroit_Tigers_Baseball_Team.jpg")!,
+        "kauffman-stadium":     URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/35/Kauffman2017.jpg/640px-Kauffman2017.jpg")!,
+        "petco-park":           URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Petco_Park_Padres_Game.jpg/640px-Petco_Park_Padres_Game.jpg")!,
+        "angel-stadium":        URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Angelstadiummarch2019.jpg/640px-Angelstadiummarch2019.jpg")!,
+    ]
 
     // MARK: - Fun discoveries (ballpark quest facts)
 

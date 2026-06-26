@@ -1,26 +1,106 @@
 import SwiftUI
 
-/// A rich, stadium-specific illustration that renders each ballpark with its
-/// own architectural identity — similar in spirit to classic ballpark art prints.
-///
-/// Used as the hero image on diary cards and the game-detail ballpark panel.
+/// Displays a real photo of the ballpark when available, falling back
+/// to the hand-drawn stadium illustration. Used as the hero image on
+/// diary cards and the game-detail ballpark panel.
 struct BallparkSnapshot: View {
     let ballpark: Ballpark
     var span: Double = 0.0065 // kept for API compatibility
 
     private var teamColor: Color { ballpark.team.primary }
-    private var teamSecondary: Color { ballpark.team.secondary }
 
     var body: some View {
-        StadiumIllustration(
-            ballpark: ballpark,
-            teamColor: teamColor,
-            teamSecondary: teamSecondary
-        )
+        if let assetName = ballpark.photoAssetName {
+            BundledStadiumPhoto(assetName: assetName, ballpark: ballpark, teamColor: teamColor)
+        } else if let photoURL = ballpark.photoURL {
+            RealStadiumPhoto(url: photoURL, teamColor: teamColor, ballpark: ballpark)
+        } else {
+            StadiumIllustration(
+                ballpark: ballpark,
+                teamColor: teamColor,
+                teamSecondary: ballpark.team.secondary
+            )
+        }
     }
 }
 
-// MARK: - Stadium illustration
+// MARK: - Real stadium photo via AsyncImage
+
+private struct RealStadiumPhoto: View {
+    let url: URL
+    let teamColor: Color
+    let ballpark: Ballpark
+
+    @State private var loadFailed = false
+
+    var body: some View {
+        ZStack {
+            if loadFailed {
+                // Graceful fallback when photo fails to load
+                StadiumIllustration(
+                    ballpark: ballpark,
+                    teamColor: teamColor,
+                    teamSecondary: ballpark.team.secondary
+                )
+            } else {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        shimmerPlaceholder
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    case .failure:
+                        // Trigger fallback on next render
+                        Color.clear
+                            .onAppear { loadFailed = true }
+                    @unknown default:
+                        Color.clear
+                            .onAppear { loadFailed = true }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Animated shimmer while the photo loads.
+    private var shimmerPlaceholder: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [teamColor.opacity(0.15), teamColor.opacity(0.08), teamColor.opacity(0.15)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+    }
+}
+
+// MARK: - Bundled stadium photo from Assets.xcassets
+
+private struct BundledStadiumPhoto: View {
+    let assetName: String
+    let ballpark: Ballpark
+    let teamColor: Color
+
+    var body: some View {
+        if let uiImage = UIImage(named: assetName) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } else {
+            // Asset not found yet — fall back to illustration
+            StadiumIllustration(
+                ballpark: ballpark,
+                teamColor: teamColor,
+                teamSecondary: ballpark.team.secondary
+            )
+        }
+    }
+}
+
+// MARK: - Stadium illustration (fallback)
 
 private struct StadiumIllustration: View {
     let ballpark: Ballpark
@@ -48,10 +128,6 @@ private struct StadiumIllustration: View {
         if case .landmark = style { return true }
         return false
     }
-    private var isModern: Bool {
-        if case .modern = style { return true }
-        return false
-    }
 
     private var landmarkName: String? {
         if case .landmark(let name) = style { return name }
@@ -68,35 +144,22 @@ private struct StadiumIllustration: View {
             let w = size.width
             let h = size.height
 
-            // ── Sky ──
             drawSky(context: &context, w: w, h: h)
-
-            // ── Stars ──
             drawStars(context: &context, w: w, h: h)
-
-            // ── Moon ──
             drawMoon(context: &context, w: w, h: h)
 
-            // ── Landmark silhouette (behind stadium) ──
             if let landmark = landmarkName {
                 drawLandmark(context: &context, w: w, h: h, landmark: landmark)
             }
 
-            // ── Stadium structure ──
             drawStadium(context: &context, w: w, h: h)
-
-            // ── Marquee / name sign on stadium ──
             drawMarquee(context: &context, w: w, h: h)
-
-            // ── Field and warning track ──
             drawField(context: &context, w: w, h: h)
 
-            // ── Water feature (McCovey Cove / Kauffman fountains) ──
             if style.hasWaterFeature {
                 drawWaterFeature(context: &context, w: w, h: h)
             }
 
-            // ── Foreground vignette ──
             drawVignette(context: &context, w: w, h: h)
         }
     }
@@ -108,11 +171,9 @@ private struct StadiumIllustration: View {
         let bottomColor: Color
 
         if isDome {
-            // Domed stadiums — warmer interior feel
             topColor = Color(red: 0.04, green: 0.09, blue: 0.22)
             bottomColor = Color(red: 0.10, green: 0.15, blue: 0.30)
         } else if isLandmark {
-            // Parks with landmarks get a more dramatic sky
             topColor = Color(red: 0.02, green: 0.05, blue: 0.18)
             bottomColor = Color(red: 0.08, green: 0.14, blue: 0.34)
         } else {
@@ -162,7 +223,6 @@ private struct StadiumIllustration: View {
         let moonY: CGFloat = isLandmark ? h * 0.18 : h * 0.13
         let moonR: CGFloat = 15
 
-        // Glow
         let glowPath = Path(ellipseIn: CGRect(
             x: moonX - moonR * 2.5, y: moonY - moonR * 2.5,
             width: moonR * 5, height: moonR * 5
@@ -188,7 +248,6 @@ private struct StadiumIllustration: View {
 
         switch landmark {
         case "Gateway Arch":
-            // The iconic St. Louis Arch behind the stadium
             let cx = w * 0.82
             let baseY = horizonY - 8
             let archHeight: CGFloat = h * 0.18
@@ -200,7 +259,6 @@ private struct StadiumIllustration: View {
                 control2: CGPoint(x: cx + 28, y: baseY - archHeight)
             )
             context.stroke(arch, with: .color(landmarkColor), lineWidth: 3)
-
         case "CN Tower":
             let cx = w * 0.78
             let baseY = horizonY - 4
@@ -216,14 +274,11 @@ private struct StadiumIllustration: View {
             tower.addLine(to: CGPoint(x: cx + 2, y: baseY))
             tower.closeSubpath()
             context.fill(tower, with: .color(landmarkColor))
-            // Pod
             let pod = Path(ellipseIn: CGRect(x: cx - 5, y: towerTop - 3, width: 10, height: 8))
             context.fill(pod, with: .color(landmarkColor))
-
         case "Clemente Bridge":
             let leftX = w * 0.55
             let bridgeY = horizonY - 30
-            // Bridge arches
             for i in 0..<3 {
                 let bx = leftX + CGFloat(i) * 16
                 var arch = Path()
@@ -233,7 +288,6 @@ private struct StadiumIllustration: View {
                 arch.addLine(to: CGPoint(x: bx + 10, y: horizonY))
                 context.fill(arch, with: .color(landmarkColor))
             }
-
         case "B&O Warehouse":
             let wx = w * 0.58
             let wy = horizonY - h * 0.12
@@ -241,7 +295,6 @@ private struct StadiumIllustration: View {
             let bh = horizonY - wy
             var warehouse = Path(CGRect(x: wx, y: wy, width: bw, height: bh))
             context.fill(warehouse, with: .color(landmarkColor))
-            // Windows
             for row in 0..<4 {
                 for col in 0..<5 {
                     let winX = wx + 6 + CGFloat(col) * 9
@@ -250,7 +303,6 @@ private struct StadiumIllustration: View {
                     context.fill(win, with: .color(Color.white.opacity(0.03)))
                 }
             }
-
         case "Space Needle":
             let cx = w * 0.80
             let baseY = horizonY - 4
@@ -266,14 +318,12 @@ private struct StadiumIllustration: View {
             needle.addLine(to: CGPoint(x: cx + 1.5, y: baseY))
             needle.closeSubpath()
             context.fill(needle, with: .color(landmarkColor))
-
         case "Rocky Mountains":
             let peaks: [(CGFloat, CGFloat)] = [
                 (0.65, 0.38), (0.72, 0.22), (0.78, 0.30), (0.85, 0.18), (0.92, 0.28)
             ]
             var mountains = Path()
             let my = horizonY
-            // Flat base
             mountains.move(to: CGPoint(x: w * 0.58, y: my))
             for (px, ph) in peaks {
                 mountains.addLine(to: CGPoint(x: w * px, y: h * ph))
@@ -282,11 +332,9 @@ private struct StadiumIllustration: View {
             mountains.addLine(to: CGPoint(x: w * 0.98, y: my))
             mountains.closeSubpath()
             context.fill(mountains, with: .color(landmarkColor.opacity(1.5)))
-
         case "Capitol":
             let cx = w * 0.81
             let domeY = horizonY - h * 0.10
-            // Dome
             var dome = Path()
             dome.addArc(
                 center: CGPoint(x: cx, y: domeY + 18),
@@ -297,12 +345,9 @@ private struct StadiumIllustration: View {
             )
             dome.closeSubpath()
             context.fill(dome, with: .color(landmarkColor))
-            // Base
             let base = Path(CGRect(x: cx - 14, y: domeY + 16, width: 28, height: 14))
             context.fill(base, with: .color(landmarkColor))
-
         default:
-            // Generic skyline silhouette
             let buildings: [(CGFloat, CGFloat, CGFloat)] = [
                 (0.60, 0.35, 16), (0.65, 0.28, 20), (0.70, 0.32, 14),
                 (0.75, 0.24, 24), (0.80, 0.30, 18), (0.85, 0.34, 12),
@@ -340,17 +385,14 @@ private struct StadiumIllustration: View {
             drawModernStructure(context: &context, w: w, h: h, sTop: sTop, sBot: sBot, sHeight: sHeight)
         }
 
-        // Light towers
         drawLightTowers(context: &context, w: w, h: h, sTop: sTop, sHeight: sHeight)
     }
 
     private func drawClassicStructure(context: inout GraphicsContext, w: CGFloat, h: CGFloat, sTop: CGFloat, sBot: CGFloat, sHeight: CGFloat) {
-        // Stepped grandstand with arched entryways — Fenway / Wrigley feel
         let darkColor = Color(red: 0.03, green: 0.04, blue: 0.08)
         let midColor = Color(red: 0.06, green: 0.08, blue: 0.14)
         let arcColor = teamColor
 
-        // Main grandstand
         var grandstand = Path()
         grandstand.move(to: CGPoint(x: w * 0.04, y: sTop + sHeight * 0.50))
         grandstand.addCurve(
@@ -363,7 +405,6 @@ private struct StadiumIllustration: View {
         grandstand.closeSubpath()
         context.fill(grandstand, with: .color(darkColor))
 
-        // Upper deck band
         var upperDeck = Path()
         upperDeck.move(to: CGPoint(x: w * 0.05, y: sTop + sHeight * 0.58))
         upperDeck.addCurve(
@@ -376,7 +417,6 @@ private struct StadiumIllustration: View {
         upperDeck.closeSubpath()
         context.fill(upperDeck, with: .color(midColor))
 
-        // Arched entryways
         let archCount = 9
         let archSpan = w * 0.82 / CGFloat(archCount)
         let archStartX = w * 0.09
@@ -399,27 +439,15 @@ private struct StadiumIllustration: View {
             arch.addLine(to: CGPoint(x: cx + aw / 2, y: archBot))
             arch.closeSubpath()
             context.fill(arch, with: .color(arcColor.opacity(0.25)))
-
-            var archOutline = Path()
-            archOutline.move(to: CGPoint(x: cx - aw / 2, y: archBot))
-            archOutline.addLine(to: CGPoint(x: cx - aw / 2, y: archTop + ah * 0.18))
-            archOutline.addCurve(
-                to: CGPoint(x: cx + aw / 2, y: archTop + ah * 0.18),
-                control1: CGPoint(x: cx - aw / 2, y: archTop),
-                control2: CGPoint(x: cx + aw / 2, y: archTop)
-            )
-            archOutline.addLine(to: CGPoint(x: cx + aw / 2, y: archBot))
-            context.stroke(archOutline, with: .color(arcColor.opacity(0.30)), lineWidth: 1)
+            context.stroke(arch, with: .color(arcColor.opacity(0.30)), lineWidth: 1)
         }
 
-        // Ivy on the outfield wall (Wrigley)
         if ballpark.id == "wrigley-field" {
             let ivyY = sBot
             let ivyH: CGFloat = sHeight * 0.18
             let ivyPath = Path(CGRect(x: w * 0.06, y: ivyY, width: w * 0.88, height: ivyH))
             context.fill(ivyPath, with: .color(Theme.grass.opacity(0.55)))
-            // Darker leafy texture dots
-            for i in 0..<30 {
+            for _ in 0..<30 {
                 let dx = CGFloat.random(in: w * 0.06...w * 0.94)
                 let dy = CGFloat.random(in: ivyY...ivyY + ivyH)
                 let dot = Path(ellipseIn: CGRect(x: dx, y: dy, width: 3, height: 2))
@@ -429,11 +457,9 @@ private struct StadiumIllustration: View {
     }
 
     private func drawModernStructure(context: inout GraphicsContext, w: CGFloat, h: CGFloat, sTop: CGFloat, sBot: CGFloat, sHeight: CGFloat) {
-        // Clean modern lines — Yankee Stadium II / Citi Field / Citizens Bank
         let darkColor = Color(red: 0.03, green: 0.04, blue: 0.08)
         let midColor = Color(red: 0.06, green: 0.08, blue: 0.14)
 
-        // Main block
         var block = Path()
         block.move(to: CGPoint(x: w * 0.03, y: sTop + sHeight * 0.45))
         block.addCurve(
@@ -446,7 +472,6 @@ private struct StadiumIllustration: View {
         block.closeSubpath()
         context.fill(block, with: .color(darkColor))
 
-        // Upper deck
         var upper = Path()
         upper.move(to: CGPoint(x: w * 0.04, y: sTop + sHeight * 0.52))
         upper.addCurve(
@@ -459,12 +484,10 @@ private struct StadiumIllustration: View {
         upper.closeSubpath()
         context.fill(upper, with: .color(midColor))
 
-        // Horizontal light band — stadium lights under the upper deck lip
         let bandY = sTop + sHeight * 0.52
         let band = Path(CGRect(x: w * 0.05, y: bandY, width: w * 0.90, height: 2))
         context.fill(band, with: .color(Theme.lights.opacity(0.12)))
 
-        // Video board glow (rectangle in the outfield)
         let boardW: CGFloat = w * 0.22
         let boardH: CGFloat = sHeight * 0.18
         let boardX = w * 0.39
@@ -475,10 +498,7 @@ private struct StadiumIllustration: View {
     }
 
     private func drawDomeStructure(context: inout GraphicsContext, w: CGFloat, h: CGFloat, sTop: CGFloat, sBot: CGFloat, sHeight: CGFloat) {
-        // Domed park — Tropicana Field
         let domeColor = Color(red: 0.04, green: 0.06, blue: 0.12)
-
-        // Dome shape
         var dome = Path()
         dome.move(to: CGPoint(x: w * 0.05, y: sBot))
         dome.addCurve(
@@ -489,8 +509,6 @@ private struct StadiumIllustration: View {
         dome.addLine(to: CGPoint(x: w * 0.95, y: sBot))
         dome.closeSubpath()
         context.fill(dome, with: .color(domeColor))
-
-        // Dome roof lines
         for i in 1...5 {
             let ly = sTop - sHeight * 0.25 + (sHeight * 1.25) * (CGFloat(i) / 6.0)
             var line = Path()
@@ -498,8 +516,6 @@ private struct StadiumIllustration: View {
             line.addLine(to: CGPoint(x: w * 0.90, y: ly))
             context.stroke(line, with: .color(Color.white.opacity(0.03)), lineWidth: 1)
         }
-
-        // Entry arches at base
         let archCount = 7
         let archSpan = w * 0.76 / CGFloat(archCount)
         let archStartX = w * 0.12
@@ -523,11 +539,9 @@ private struct StadiumIllustration: View {
     }
 
     private func drawRetractableStructure(context: inout GraphicsContext, w: CGFloat, h: CGFloat, sTop: CGFloat, sBot: CGFloat, sHeight: CGFloat) {
-        // Mixed modern/retractable — Chase Field, Globe Life, Rogers Centre
         let darkColor = Color(red: 0.03, green: 0.05, blue: 0.10)
         let midColor = Color(red: 0.05, green: 0.08, blue: 0.16)
 
-        // Main structure
         var main = Path()
         main.move(to: CGPoint(x: w * 0.03, y: sTop + sHeight * 0.42))
         main.addCurve(
@@ -540,7 +554,6 @@ private struct StadiumIllustration: View {
         main.closeSubpath()
         context.fill(main, with: .color(darkColor))
 
-        // Roof tracks / visible retractable roof structure
         let roofY = sTop + sHeight * 0.30
         var roofTrack = Path()
         roofTrack.move(to: CGPoint(x: w * 0.08, y: roofY))
@@ -551,7 +564,6 @@ private struct StadiumIllustration: View {
         )
         context.stroke(roofTrack, with: .color(teamColor.opacity(0.15)), lineWidth: 2)
 
-        // Cross beams
         for i in 0..<8 {
             let bx = w * 0.10 + CGFloat(i) * w * 0.10
             let byTop = roofY - sHeight * 0.06 * (i % 2 == 0 ? 1 : 0.5)
@@ -561,7 +573,6 @@ private struct StadiumIllustration: View {
             context.stroke(beam, with: .color(Color.white.opacity(0.02)), lineWidth: 2)
         }
 
-        // Upper deck
         var upper = Path()
         upper.move(to: CGPoint(x: w * 0.04, y: sTop + sHeight * 0.50))
         upper.addCurve(
@@ -588,15 +599,12 @@ private struct StadiumIllustration: View {
             let towerBot = sTop + sHeight * 0.42
             let poleW: CGFloat = 2.5
 
-            // Pole
             let pole = Path(CGRect(x: txAbs - poleW / 2, y: towerTop, width: poleW, height: towerBot - towerTop))
             context.fill(pole, with: .color(Color(red: 0.14, green: 0.14, blue: 0.17)))
 
-            // Light cluster
             let cluster = Path(ellipseIn: CGRect(x: txAbs - 7, y: towerTop - 2, width: 14, height: 7))
             context.fill(cluster, with: .color(teamColor.opacity(0.12)))
 
-            // Warm glow
             let glow = Path(ellipseIn: CGRect(x: txAbs - 20, y: towerTop - 12, width: 40, height: 26))
             context.fill(glow, with: .radialGradient(
                 Gradient(colors: [Theme.lights.opacity(0.16), Theme.lights.opacity(0.03), .clear]),
@@ -612,8 +620,6 @@ private struct StadiumIllustration: View {
     private func drawMarquee(context: inout GraphicsContext, w: CGFloat, h: CGFloat) {
         let sTop = stadiumTop(h)
         let sHeight = stadiumBottom(h) - sTop
-
-        // Only classic and retro-classic parks get a marquee
         guard isClassic || isRetroClassic else { return }
 
         let marqueeColor: Color
@@ -628,15 +634,10 @@ private struct StadiumIllustration: View {
         let my = sTop + sHeight * 0.08
         let mh: CGFloat = 18
 
-        // Marquee background
         let bg = Path(roundedRect: CGRect(x: mx, y: my, width: mw, height: mh), cornerRadius: 4)
         context.fill(bg, with: .color(marqueeColor.opacity(0.85)))
+        context.stroke(bg, with: .color(Color.white.opacity(0.3)), lineWidth: 1)
 
-        // Border
-        let border = Path(roundedRect: CGRect(x: mx, y: my, width: mw, height: mh), cornerRadius: 4)
-        context.stroke(border, with: .color(Color.white.opacity(0.3)), lineWidth: 1)
-
-        // Team name in marquee — drawn as small dots pattern to simulate text
         let textColor = Color.white.opacity(0.85)
         let name = ballpark.name.uppercased()
         let charWidth: CGFloat = 4.5
@@ -644,7 +645,6 @@ private struct StadiumIllustration: View {
         let startX = mx + (mw - totalChars * charWidth) / 2 + 1
         let charY = my + 4
 
-        // Draw small vertical lines to simulate lettering
         for (i, _) in name.enumerated() {
             let segments: [(CGFloat, CGFloat)] = [
                 (0, 0), (0.8, 0.2), (1.5, 0.5), (0.8, 0.8), (0, 1.0),
@@ -660,7 +660,6 @@ private struct StadiumIllustration: View {
             }
         }
 
-        // Hanging marquee bulbs
         for i in 0..<Int(mw / 6) {
             let bx = mx + CGFloat(i) * 6
             let bulb = Path(ellipseIn: CGRect(x: bx, y: my + mh - 1, width: 3, height: 3))
@@ -674,12 +673,10 @@ private struct StadiumIllustration: View {
         let fieldTop = stadiumBottom(h)
         let fieldBot = h
 
-        // Warning track
         let trackH = h * 0.04
         let track = Path(CGRect(x: 0, y: fieldTop, width: w, height: trackH))
         context.fill(track, with: .color(Theme.clay.opacity(0.55)))
 
-        // Grass
         let grassPath = Path(CGRect(x: 0, y: fieldTop + trackH, width: w, height: fieldBot - fieldTop - trackH))
         context.fill(grassPath, with: .linearGradient(
             Gradient(colors: [Theme.grass.opacity(0.7), Theme.grass.opacity(0.45), Theme.grass.opacity(0.3)]),
@@ -687,7 +684,6 @@ private struct StadiumIllustration: View {
             endPoint: CGPoint(x: 0.5, y: 1)
         ))
 
-        // Foul lines
         let foulY = fieldTop + trackH + 4
         var foul1 = Path()
         foul1.move(to: CGPoint(x: w * 0.47, y: foulY))
@@ -704,8 +700,6 @@ private struct StadiumIllustration: View {
 
     private func drawWaterFeature(context: inout GraphicsContext, w: CGFloat, h: CGFloat) {
         let fieldTop = stadiumBottom(h)
-
-        // McCovey Cove / water beyond the outfield
         let waterY = fieldTop + h * 0.02
         let waterH = h * 0.06
 
@@ -729,7 +723,6 @@ private struct StadiumIllustration: View {
             endRadius: w * 0.78
         ))
 
-        // Bottom fade for text readability
         let textOverlay = Path(CGRect(x: 0, y: h * 0.68, width: w, height: h * 0.32))
         context.fill(textOverlay, with: .linearGradient(
             Gradient(colors: [.clear, Color.black.opacity(0.55)]),

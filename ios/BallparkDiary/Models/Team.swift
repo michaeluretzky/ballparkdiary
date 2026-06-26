@@ -79,6 +79,11 @@ extension Team {
     /// The numeric MLB Stats API id for this team.
     var mlbId: Int { Team.mlbIds[id] ?? 0 }
 
+    /// URL for the team's full logo SVG from MLB's official CDN.
+    var logoURL: URL? {
+        URL(string: "https://www.mlbstatic.com/team-logos/\(mlbId).svg")
+    }
+
     /// Reverse lookup: find a team from its MLB Stats API numeric id.
     static func by(mlbId: Int) -> Team? {
         guard let slug = mlbIds.first(where: { $0.value == mlbId })?.key else { return nil }
