@@ -16,6 +16,8 @@ struct SVGWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = WKWebsiteDataStore.nonPersistent()
+        // Suppress verbose WKWebView logging that can cause issues
+        config.suppressesIncrementalRendering = true
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -25,6 +27,8 @@ struct SVGWebView: UIViewRepresentable {
         webView.scrollView.backgroundColor = .clear
         webView.isUserInteractionEnabled = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // Prevent WKWebView from intercepting parent scroll
+        webView.scrollView.isUserInteractionEnabled = false
 
         context.coordinator.load(in: webView)
         return webView
@@ -74,9 +78,21 @@ struct SVGWebView: UIViewRepresentable {
                     <head>
                     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
                     <style>
-                    * { margin: 0; padding: 0; }
-                    html, body { width: 100%; height: 100%; background: transparent; }
-                    svg { display: block; width: 100%; height: 100%; }
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    html, body {
+                        width: 100%; height: 100%;
+                        background: transparent;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    svg {
+                        max-width: 100%;
+                        max-height: 100%;
+                        width: auto;
+                        height: auto;
+                        display: block;
+                    }
                     </style>
                     </head>
                     <body>\(svgStr)</body>

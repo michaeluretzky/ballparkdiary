@@ -864,9 +864,12 @@ final class DiaryStore {
         hasCompletedOnboarding = snapshot.hasCompletedOnboarding
         hasAcceptedTerms = snapshot.hasAcceptedTerms
         connectedInboxes = snapshot.inboxes
-        gamesByInbox = Dictionary(uniqueKeysWithValues: snapshot.gamesByInbox.compactMap { key, value in
+        // Use uniquingKeysWith to safely handle any accidental duplicates
+        // instead of crashing on Dictionary(uniqueKeysWithValues:).
+        let pairs: [(UUID, [AttendedGame])] = snapshot.gamesByInbox.compactMap { key, value in
             UUID(uuidString: key).map { ($0, value) }
-        })
+        }
+        gamesByInbox = Dictionary(pairs, uniquingKeysWith: { first, _ in first })
         droppedCandidates = snapshot.droppedCandidates
     }
 }

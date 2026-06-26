@@ -24,8 +24,14 @@ final class StoreViewModel {
     private let entitlementID = "pro"
 
     init() {
-        Task { await listenForUpdates() }
-        Task { await fetchOfferings() }
+        // Defer async work slightly so RevenueCat has time to configure.
+        // Purchases.configure() in BallparkDiaryApp.init() runs after property
+        // initializers, so we schedule our tasks on the next run loop.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            Task { await self.listenForUpdates() }
+            Task { await self.fetchOfferings() }
+        }
     }
 
     private func listenForUpdates() async {

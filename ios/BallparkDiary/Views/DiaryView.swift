@@ -4,6 +4,9 @@ import SwiftUI
 /// compact scores, confirmation numbers, and subtle parallax on scroll.
 struct DiaryView: View {
     @Environment(DiaryStore.self) private var store
+    @State private var showAddSheet = false
+    @State private var gameToDelete: AttendedGame? = nil
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -43,9 +46,10 @@ struct DiaryView: View {
                                             }
                                     }
                                     .buttonStyle(.plain)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    .contextMenu {
                                         Button(role: .destructive) {
-                                            withAnimation { store.deleteGame(game.id) }
+                                            gameToDelete = game
+                                            showDeleteConfirm = true
                                         } label: {
                                             Label("Delete", systemImage: "trash")
                                         }
@@ -79,9 +83,10 @@ struct DiaryView: View {
                                             }
                                     }
                                     .buttonStyle(.plain)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    .contextMenu {
                                         Button(role: .destructive) {
-                                            withAnimation { store.deleteGame(game.id) }
+                                            gameToDelete = game
+                                            showDeleteConfirm = true
                                         } label: {
                                             Label("Delete", systemImage: "trash")
                                         }
@@ -102,6 +107,22 @@ struct DiaryView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showAddSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(store.favoriteTeam.primary)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                Circle()
+                                    .fill(store.favoriteTeam.primary.opacity(0.15))
+                            )
+                    }
+                }
+            }
             .refreshable {
                 let count = await store.refresh(force: true)
                 if count > 0 {
@@ -112,6 +133,21 @@ struct DiaryView: View {
             }
             .navigationDestination(for: AttendedGame.self) { game in
                 GameDetailView(game: game)
+            }
+            .confirmationDialog("Remove this game from your diary?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) {
+                    if let game = gameToDelete {
+                        withAnimation { store.deleteGame(game.id) }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This won't affect the original ticket.")
+            }
+            .sheet(isPresented: $showAddSheet) {
+                AddGameOptionsView()
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
