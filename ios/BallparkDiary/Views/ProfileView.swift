@@ -9,6 +9,7 @@ struct ProfileView: View {
     @State private var showTeamPicker: Bool = false
     @State private var showPaywall: Bool = false
     @State private var showResetConfirm: Bool = false
+    @State private var showDebugProToggle: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -29,6 +30,13 @@ struct ProfileView: View {
                         // Pro status
                         proStatusCard
                             .padding(.horizontal, 16)
+
+                        // Developer debug section (hidden — long-press pro card to reveal)
+                        if showDebugProToggle {
+                            debugProSection
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                        }
 
                         // Danger zone
                         dangerZone
@@ -238,6 +246,69 @@ struct ProfileView: View {
         }
         .buttonStyle(.plain)
         .disabled(storeKit.isPremium)
+        .onLongPressGesture(minimumDuration: 1.5) {
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            #endif
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                showDebugProToggle.toggle()
+            }
+        }
+    }
+
+    // MARK: - Debug Pro section
+
+    private var debugProSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("Developer Pro Override")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Spacer()
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Manual Pro access")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(storeKit.debugProEnabled
+                         ? "Pro features are force-enabled regardless of purchase."
+                         : "Toggle to enable Pro features without purchasing.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { storeKit.debugProEnabled },
+                    set: { _ in withAnimation { storeKit.toggleDebugPro() } }
+                ))
+                .tint(Theme.lights)
+                .labelsHidden()
+            }
+
+            Text("This bypasses RevenueCat. Disable to restore normal purchase flow.")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.textMuted.opacity(0.6))
+        }
+        .padding(16)
+        .nightCard()
+        .overlay(alignment: .topTrailing) {
+            Text("DEBUG")
+                .font(.caps(9, weight: .heavy))
+                .tracking(2)
+                .foregroundStyle(Theme.lights)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule().fill(Theme.lights.opacity(0.16))
+                )
+                .padding(12)
+        }
     }
 
     // MARK: - Danger zone
