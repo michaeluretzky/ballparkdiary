@@ -61,6 +61,22 @@ struct AttendedGame: Identifiable, Hashable, Codable {
         [section, row, seat].contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty && $0 != "—" }
     }
 
+    /// Return a copy with updated seat information.
+    func withSeat(section: String, row: String, seat: String) -> AttendedGame {
+        AttendedGame(
+            id: id, date: date, ballparkId: ballparkId,
+            homeTeamId: homeTeamId, awayTeamId: awayTeamId,
+            homeScore: homeScore, awayScore: awayScore,
+            userRootedForHome: userRootedForHome,
+            section: section, row: row, seat: seat, confirmation: confirmation,
+            weather: weather, firstPitchTempF: firstPitchTempF,
+            attendance: attendance, durationMinutes: durationMinutes,
+            highlights: highlights, milestones: milestones,
+            emailSubject: emailSubject, source: source, status: status,
+            isVerified: isVerified
+        )
+    }
+
     /// Return a copy with the user's rooting interest changed to the given side.
     func rooting(forHome rootedForHome: Bool) -> AttendedGame {
         AttendedGame(
@@ -329,14 +345,17 @@ extension AttendedGame {
                         : "A complete game is rare these days. You saw every pitch.",
                     inning: nil
                 ))
-            } else if line.strikeOuts >= 15 {
+            } else if line.strikeOuts >= 12 {
+                let elite = line.strikeOuts >= 15
                 result.append(PlayerMilestone(
                     id: UUID(), playerName: line.name, teamId: teamId,
                     title: "\(line.strikeOuts)-Strikeout Game",
                     category: .strikeouts,
                     stat: "\(line.strikeOuts) K in \(line.inningsPitched) IP",
                     detail: "\(line.name) racked up \(line.strikeOuts) strikeouts.",
-                    context: "15 strikeouts in a single game is elite. You were in the building.",
+                    context: elite
+                        ? "15 strikeouts in a single game is elite. You were in the building."
+                        : "\(line.strikeOuts) strikeouts in one game is a night to remember.",
                     inning: nil
                 ))
             }

@@ -702,7 +702,7 @@ private struct StepperButton: View {
     }
 }
 
-private struct LabeledInput: View {
+struct LabeledInput: View {
     let label: String
     @Binding var text: String
 

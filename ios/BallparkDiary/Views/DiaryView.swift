@@ -261,6 +261,7 @@ struct GameCard: View {
                         .font(.system(size: 10, weight: .heavy))
                         .foregroundStyle(.white.opacity(0.5))
                     TeamChip(team: game.homeTeam, primary: true)
+                        .layoutPriority(1)
                     Spacer()
                     verifiedDot
                 }
@@ -426,6 +427,7 @@ private struct TeamChip: View {
                 .font(.stat(11, weight: .heavy))
                 .foregroundStyle(primary ? .white : .white.opacity(0.65))
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 }

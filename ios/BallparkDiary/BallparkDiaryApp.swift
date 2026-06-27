@@ -38,11 +38,13 @@ struct BallparkDiaryApp: App {
                     await store.refresh()
                 }
                 .onOpenURL { _ in
-                    // Opened from share extension — import any shared tickets,
-                    // then switch to Diary so the user can verify the new game.
+                    // Opened from share extension — switch to Diary immediately
+                    // so the user sees their game card as soon as it's imported.
+                    // The existing scene-phase refresh handles importing shared
+                    // tickets; we just import directly so the card appears first try.
+                    store.requestedTab = "diary"
                     Task {
-                        await store.refresh(force: true)
-                        store.requestedTab = "diary"
+                        _ = await store.importSharedTickets()
                     }
                 }
                 .onChange(of: scenePhase) { _, newPhase in

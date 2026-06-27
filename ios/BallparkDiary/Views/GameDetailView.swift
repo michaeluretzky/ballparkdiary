@@ -11,6 +11,7 @@ struct GameDetailView: View {
     @State private var shareImageData: Data? = nil
     @State private var showDeleteConfirm: Bool = false
     @State private var showPaywall: Bool = false
+    @State private var showEditSheet: Bool = false
 
     var body: some View {
         ScrollView {
@@ -63,6 +64,12 @@ struct GameDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
+                    Button {
+                        showEditSheet = true
+                    } label: {
+                        Image(systemName: "pencil")
+                            .foregroundStyle(Theme.lights)
+                    }
                     if let shareImageData, let shareImage {
                         if storeKit.isPremium {
                             ShareLink(
@@ -102,6 +109,11 @@ struct GameDetailView: View {
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView(store: storeKit)
+        }
+        .sheet(isPresented: $showEditSheet) {
+            EditGameSheet(game: game)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .task { renderShareCard() }
     }
@@ -360,7 +372,7 @@ private struct TicketStubReal: View {
                 // Small logo area
                 HStack(spacing: 0) {
                     Spacer()
-                    TeamLogoView(team: game.homeTeam, size: 18, showGloss: false)
+                    TeamLogoView(team: game.homeTeam, size: 28, showGloss: false)
                         .padding(.trailing, 12)
                 }
             }
@@ -818,5 +830,144 @@ private struct SourceRow: View {
         }
         .padding(12)
         .nightCardDeep(cornerRadius: 14)
+    }
+}
+
+// MARK: - Edit Game Sheet
+
+/// Lets the user update seat info and rooting preference on any verified
+/// or unverified game. Changes are persisted immediately via the diary store.
+private struct EditGameSheet: View {
+    @Environment(DiaryStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let game: AttendedGame
+
+    @State private var section: String
+    @State private var row: String
+    @State private var seat: String
+    @State private var rootedForHome: Bool
+    @FocusState private var focusedField: Field?
+
+    enum Field: Hashable { case sec, rw, st }
+
+    init(game: AttendedGame) {
+        self.game = game
+        _section = State(initialValue: game.section == "—" ? "" : game.section)
+        _row = State(initialValue: game.row == "—" ? "" : game.row)
+        _seat = State(initialValue: game.seat == "—" ? "" : game.seat)
+        _rootedForHome = State(initialValue: game.userRootedForHome)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.nightGradient.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Matchup summary
+                        VStack(spacing: 8) {
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle().fill(game.awayTeam.primary)
+                                    Circle().strokeBorder(game.awayTeam.secondary, lineWidth: 1.5)
+                                    TeamLogoView(team: game.awayTeam, size: 40, showGloss: false)
+                                }
+                                .frame(width: 40, height: 40)
+                                Text("@")
+                                    .font(.system(size: 12, weight: .heavy))
+                                    .foregroundStyle(Theme.textMuted)
+                                ZStack {
+                                    Circle().fill(game.homeTeam.primary)
+                                    Circle().strokeBorder(game.homeTeam.secondary, lineWidth: 1.5)
+                                    TeamLogoView(team: game.homeTeam, size: 40, showGloss: false)
+                                }
+                                .frame(width: 40, height: 40)
+                            }
+                            Text(game.ballpark.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                            Text(game.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted)))
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity)
+                        .nightCard()
+
+                        // Seat info
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("SEAT INFO".uppercased())
+                                .font(.caps(10, weight: .heavy))
+                                .tracking(2.2)
+                                .foregroundStyle(Theme.clay)
+
+                            HStack(spacing: 8) {
+                                LabeledInput(label: "Section", text: $section)
+                                    .focused($focusedField, equals: .sec)
+                                LabeledInput(label: "Row", text: $row)
+                                    .focused($focusedField, equals: .rw)
+                                LabeledInput(label: "Seat", text: $seat)
+                                    .focused($focusedField, equals: .st)
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .nightCard()
+
+                        // Rooting preference
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("YOU ROOTED FOR".uppercased())
+                                .font(.caps(10, weight: .heavy))
+                                .tracking(2.2)
+                                .foregroundStyle(Theme.clay)
+
+                            Picker("Rooted for", selection: $rootedForHome) {
+                                Text(game.homeTeam.fullName).tag(true)
+                                Text(game.awayTeam.fullName).tag(false)
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .nightCard()
+
+                        Color.clear.frame(height: 20)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                }
+            }
+            .navigationTitle("Edit Game")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let s = section.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : section
+                        let r = row.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : row
+                        let se = seat.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : seat
+                        store.setSeatInfo(game.id, section: s, row: r, seat: se)
+                        if rootedForHome != game.userRootedForHome {
+                            store.setRootedForHome(game.id, rootedForHome: rootedForHome)
+                        }
+                        dismiss()
+                    }
+                    .fontWeight(.heavy)
+                    .foregroundStyle(Theme.lights)
+                }
+                ToolbarItem(placement: .keyboard) {
+                    HStack {
+                        Spacer()
+                        Button("Done") { focusedField = nil }
+                            .fontWeight(.semibold)
+                    }
+                }
+            }
+        }
     }
 }

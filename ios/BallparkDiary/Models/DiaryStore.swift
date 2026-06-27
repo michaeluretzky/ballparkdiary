@@ -438,6 +438,19 @@ final class DiaryStore {
         }
     }
 
+    /// Update seat info (section, row, seat) for a verified ticket.
+    /// Does nothing if the game ID is not found in the diary.
+    func setSeatInfo(_ id: UUID, section: String, row: String, seat: String) {
+        for (inboxId, list) in gamesByInbox {
+            guard let index = list.firstIndex(where: { $0.id == id }) else { continue }
+            var updated = list
+            updated[index] = updated[index].withSeat(section: section, row: row, seat: seat)
+            gamesByInbox[inboxId] = updated
+            save()
+            return
+        }
+    }
+
     /// Look up a game by its ID across all inboxes. Returns nil if not found.
     /// Use this instead of passing AttendedGame value types through navigation
     /// when the game may be mutated by the store (e.g. rooted-for changes).
@@ -494,6 +507,10 @@ final class DiaryStore {
 
     // MARK: - Refresh (pull-to-refresh)
 
+    /// Guards against overlapping shared-ticket imports so the share-extension
+    /// URL handler and the periodic refresh don't race and double-add games.
+    private var isImporting: Bool = false
+
     /// Import any newly-shared tickets and refresh upcoming games whose final
     /// score may now be available. Also re-verifies unverified manual games.
     /// Returns the number of newly imported games.
@@ -533,6 +550,10 @@ final class DiaryStore {
     /// after the window they're dropped and surfaced to the user.
     @discardableResult
     func importSharedTickets() async -> Int {
+        guard !isImporting else { return 0 }
+        isImporting = true
+        defer { isImporting = false }
+
         let pending = SharedTicketStore.load()
         guard !pending.isEmpty else { return 0 }
 
