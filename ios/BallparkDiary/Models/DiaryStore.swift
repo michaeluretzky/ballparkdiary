@@ -142,6 +142,81 @@ final class DiaryStore {
         return best
     }
 
+    // MARK: Deeper stats
+
+    /// Total minutes of baseball watched, summed from verified game durations.
+    var totalMinutesWatched: Int { completedGames.reduce(0) { $0 + $1.durationMinutes } }
+
+    /// Human-readable total time at the ballpark.
+    var totalTimeLabel: String {
+        let hours = totalMinutesWatched / 60
+        let mins = totalMinutesWatched % 60
+        if hours > 0 { return "\(hours) h \(mins) m" }
+        return "\(mins) min"
+    }
+
+    /// Total miles traveled between ballparks, computed from chronological visits.
+    var milesTraveled: Double {
+        let parks = visitedParkSequence
+        guard parks.count > 1 else { return 0 }
+        var total: Double = 0
+        for i in 1..<parks.count {
+            let prev = CLLocation(latitude: parks[i-1].latitude, longitude: parks[i-1].longitude)
+            let curr = CLLocation(latitude: parks[i].latitude, longitude: parks[i].longitude)
+            total += prev.distance(from: curr) * 0.000621371 // meters to miles
+        }
+        return total
+    }
+
+    /// Number of distinct calendar years with attended games.
+    var seasonsActive: Int {
+        let years = Set(completedGames.map { Calendar.current.component(.year, from: $0.date) })
+        return years.count
+    }
+
+    /// Years since the first attended game.
+    var baseballAge: Int {
+        guard let first = completedGames.map(\.date).min() else { return 0 }
+        return Calendar.current.dateComponents([.year], from: first, to: .now).year ?? 0
+    }
+
+    /// Average combined runs per completed game.
+    var averageRunsPerGame: Double {
+        guard !completedGames.isEmpty else { return 0 }
+        return Double(totalRuns) / Double(completedGames.count)
+    }
+
+    /// Count of day games attended.
+    var dayGameCount: Int {
+        completedGames.filter { $0.weather == .clear || $0.weather == .partlyCloudy || $0.weather == .cloudy }.count
+    }
+
+    /// Count of night games attended.
+    var nightGameCount: Int {
+        completedGames.filter { $0.weather == .night }.count
+    }
+
+    /// Month with the best win percentage (minimum 2 games). Returns (monthName, winPct, games).
+    var bestMonth: (name: String, winPct: Double, games: Int)? {
+        let grouped = Dictionary(grouping: completedGames) {
+            Calendar.current.component(.month, from: $0.date)
+        }
+        let formatter = DateFormatter(); formatter.dateFormat = "MMMM"
+        var best: (name: String, winPct: Double, games: Int)?
+        for (month, games) in grouped where games.count >= 2 {
+            let wins = games.filter(\.userWon).count
+            let pct = Double(wins) / Double(games.count)
+            let name = Calendar.current.monthSymbols[month - 1]
+            if best == nil || pct > best!.winPct { best = (name, pct, games.count) }
+        }
+        return best
+    }
+
+    /// Count of 1-run games attended.
+    var oneRunGames: Int {
+        completedGames.filter { abs($0.homeScore - $0.awayScore) == 1 }.count
+    }
+
     // MARK: Cool extras
 
     /// Games attended on this calendar day in previous years ("On this day").
@@ -179,7 +254,7 @@ final class DiaryStore {
     /// Order matters — it determines the grid display order.
     var achievementList: [Achievement] {
         collectionAchievements + divisionAchievements + gameExperienceAchievements
-            + fanDedicationAchievements + roadRivalryAchievements
+            + fanDedicationAchievements + roadRivalryAchievements + hiddenAchievements
     }
 
     private var collectionAchievements: [Achievement] {
@@ -243,6 +318,50 @@ final class DiaryStore {
         ]
     }
 
+    // MARK: - Hidden achievements (surprise badges)
+
+    /// Hidden achievements only appear after they're unlocked — stadium-specific,
+    /// rare-event, and deep-cut badges the user discovers naturally.
+    private var hiddenAchievements: [Achievement] {
+        let all: [Achievement] = [
+            // ── Stadium-specific badges ──
+            Achievement(id: "hid_fenway", symbol: "building.columns.fill", title: "Green Monster", detail: "You've stood before the Wall", unlocked: visitedPark("fenway-park"), tint: Team.redSox.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_wrigley", symbol: "leaf.fill", title: "Ivy League", detail: "You've been to the Friendly Confines", unlocked: visitedPark("wrigley-field"), tint: Team.cubs.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_bronx", symbol: "crown.fill", title: "Bronx Bomber", detail: "You walked Monument Park", unlocked: visitedPark("yankee-stadium"), tint: Team.yankees.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_ravine", symbol: "mountain.2.fill", title: "Chavez Ravine", detail: "Sunset over Dodger Stadium", unlocked: visitedPark("dodger-stadium"), tint: Team.dodgers.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_splash", symbol: "water.waves", title: "Splash Hit", detail: "McCovey Cove is real", unlocked: visitedPark("oracle-park"), tint: Team.giants.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_gateway", symbol: "binoculars.fill", title: "Gateway to the West", detail: "The Arch frames center field", unlocked: visitedPark("busch-stadium"), tint: Team.cardinals.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_milehigh", symbol: "mountain.2.fill", title: "Mile High Club", detail: "You sat in the purple seats", unlocked: visitedPark("coors-field"), tint: Team.rockies.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_bigA", symbol: "a.circle.fill", title: "The Big A", detail: "Angel Stadium — the halo shines", unlocked: visitedPark("angel-stadium"), tint: Team.angels.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_classic_trio", symbol: "3.circle.fill", title: "Classic Trio", detail: "Fenway, Wrigley & Dodger — the last of their kind", unlocked: classicTrio, tint: Theme.parchmentInk, tier: .free, hidden: true),
+            Achievement(id: "hid_fountain", symbol: "drop.fill", title: "Fountain Finder", detail: "You found the Kauffman waterfalls", unlocked: visitedPark("kauffman-stadium"), tint: Team.royals.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_warehouse", symbol: "building.2.fill", title: "B&O Warehouse", detail: "Eutaw Street magic at Camden Yards", unlocked: visitedPark("camden-yards"), tint: Team.orioles.primary, tier: .free, hidden: true),
+            Achievement(id: "hid_bridge", symbol: "figure.walk", title: "Clemente Bridge", detail: "You walked the bridge to PNC Park", unlocked: visitedPark("pnc-park"), tint: Team.pirates.primary, tier: .free, hidden: true),
+
+            // ── Rare game events ──
+            Achievement(id: "hid_marathon", symbol: "clock.arrow.2.circlepath", title: "Marathon", detail: "A 15+ inning epic", unlocked: witnessedMarathon, tint: Theme.clayDeep, tier: .free, hidden: true),
+            Achievement(id: "hid_one_run", symbol: "scissors", title: "Nail-Biter", detail: "5+ one-run games", unlocked: oneRunGames >= 5, tint: Theme.foul, tier: .free, hidden: true),
+            Achievement(id: "hid_blowout15", symbol: "flame.circle.fill", title: "Rout Master", detail: "Witnessed a 15+ run blowout", unlocked: witnessedBlowout15, tint: Theme.lights, tier: .free, hidden: true),
+            Achievement(id: "hid_no_hitter", symbol: "hand.raised.fill", title: "No-No", detail: "You were there for a no-hitter", unlocked: witnessedNoHitter, tint: Theme.chalk, tier: .free, hidden: true),
+            Achievement(id: "hid_perfect", symbol: "sparkles", title: "Perfection", detail: "27 up, 27 down — a perfect game", unlocked: witnessedPerfectGame, tint: Theme.lights, tier: .free, hidden: true),
+            Achievement(id: "hid_cycle", symbol: "arrow.triangle.2.circlepath", title: "Hit for the Cycle", detail: "Single, double, triple, homer — one player", unlocked: witnessedCycle, tint: Theme.grass, tier: .free, hidden: true),
+
+            // ── Deep-cut stats ──
+            Achievement(id: "hid_decade", symbol: "calendar.badge.clock", title: "Decade Fan", detail: "Games across 10+ seasons", unlocked: seasonsActive >= 10, tint: Theme.clay, tier: .free, hidden: true),
+            Achievement(id: "hid_500hr", symbol: "star.circle.fill", title: "Historic Clout", detail: "Saw a 500th career home run", unlocked: witnessedFamousHRMark(500), tint: Theme.lights, tier: .free, hidden: true),
+            Achievement(id: "hid_600hr", symbol: "star.square.fill", title: "Inner Circle", detail: "Saw a 600th career home run", unlocked: witnessedFamousHRMark(600), tint: Theme.lights, tier: .free, hidden: true),
+            Achievement(id: "hid_3000hit", symbol: "figure.baseball", title: "Three Thousand", detail: "Witnessed a 3,000th career hit", unlocked: witnessed3000Hit, tint: Theme.grass, tier: .free, hidden: true),
+            Achievement(id: "hid_300k", symbol: "flame.fill", title: "The 300 Club", detail: "Saw a 300-strikeout game", unlocked: witnessed300KStrikeoutGame, tint: Theme.foul, tier: .free, hidden: true),
+            Achievement(id: "hid_10000", symbol: "clock.badge.fill", title: "Five Digits", detail: "10,000+ minutes at the ballpark", unlocked: totalMinutesWatched >= 10000, tint: Theme.clayDeep, tier: .free, hidden: true),
+            Achievement(id: "hid_iron_butt", symbol: "chair.lounge.fill", title: "Iron Butt", detail: "20,000+ minutes — that's two weeks", unlocked: totalMinutesWatched >= 20000, tint: Theme.lights, tier: .free, hidden: true),
+            Achievement(id: "hid_10k_miles", symbol: "globe.americas.fill", title: "Cross-Country", detail: "10,000+ miles traveled between parks", unlocked: milesTraveled >= 10000, tint: Theme.grass, tier: .free, hidden: true),
+            Achievement(id: "hid_grand_slam", symbol: "baseball.diamond.fill", title: "Grand Salami", detail: "Saw a grand slam live", unlocked: witnessedGrandSlam, tint: Theme.lights, tier: .free, hidden: true),
+            Achievement(id: "hid_inside_park", symbol: "figure.run", title: "Inside Job", detail: "Saw an inside-the-park home run", unlocked: witnessedInsideTheParkHR, tint: Theme.clay, tier: .free, hidden: true),
+        ]
+        // Only surface unlocked hidden badges — locked ones stay invisible.
+        return all.filter { !$0.hidden || $0.unlocked }
+    }
+
     // ── Achievement Detectors ──
 
     struct MLBDivision { let name: String; let teamIds: Set<String> }
@@ -275,12 +394,20 @@ final class DiaryStore {
     }
 
     var witnessedWalkoff: Bool {
-        games.flatMap(\.highlights).contains { $0.kind == .walkoff }
+        completedGames.flatMap(\.highlights).contains { $0.kind == .walkoff }
     }
 
     var witnessedExtraInnings: Bool {
-        games.flatMap(\.highlights).contains { h in
+        completedGames.flatMap(\.highlights).contains { h in
             if let inningNum = Int(h.inning.dropFirst()), inningNum >= 10 { return true }
+            return false
+        }
+    }
+
+    /// Attended a game that went 15+ innings.
+    var witnessedMarathon: Bool {
+        completedGames.flatMap(\.highlights).contains { h in
+            if let inningNum = Int(h.inning.dropFirst()), inningNum >= 15 { return true }
             return false
         }
     }
@@ -349,6 +476,77 @@ final class DiaryStore {
         completedGames.contains { g in
             let ids = [g.homeTeamId, g.awayTeamId]
             return ids.contains(teamA) && ids.contains(teamB)
+        }
+    }
+
+    // ── Hidden achievement detectors ──
+
+    /// Whether the user has visited a specific ballpark by its slug id.
+    private func visitedPark(_ id: String) -> Bool {
+        visitedBallparkIds.contains(id)
+    }
+
+    /// Visited Fenway, Wrigley, AND Dodger Stadium — the three classic parks.
+    private var classicTrio: Bool {
+        let trio: Set<String> = ["fenway-park", "wrigley-field", "dodger-stadium"]
+        return trio.isSubset(of: visitedBallparkIds)
+    }
+
+    /// Witnessed a blowout of 15+ runs.
+    private var witnessedBlowout15: Bool {
+        completedGames.contains { abs($0.homeScore - $0.awayScore) >= 15 }
+    }
+
+    /// Saw a no-hitter (from milestones).
+    private var witnessedNoHitter: Bool {
+        completedGames.flatMap(\.milestones).contains { $0.category == .noHitter }
+    }
+
+    /// Saw a perfect game (from milestones).
+    private var witnessedPerfectGame: Bool {
+        completedGames.flatMap(\.milestones).contains {
+            $0.category == .noHitter && $0.title == "Perfect Game"
+        }
+    }
+
+    /// Saw a player hit for the cycle (from milestones).
+    private var witnessedCycle: Bool {
+        completedGames.flatMap(\.milestones).contains { $0.category == .cycle }
+    }
+
+    /// Saw a specific career home-run milestone (e.g. 500, 600).
+    private func witnessedFamousHRMark(_ hr: Int) -> Bool {
+        completedGames.flatMap(\.milestones).contains { m in
+            m.category == .homeRun && m.stat.contains("#\(hr)")
+        }
+    }
+
+    /// Witnessed a 3,000th career hit.
+    private var witnessed3000Hit: Bool {
+        completedGames.flatMap(\.milestones).contains { m in
+            m.category == .hits && (m.stat.contains("3000") || m.title.contains("3000"))
+        }
+    }
+
+    /// Saw a pitcher strike out 300+ batters (career milestone, not game).
+    private var witnessed300KStrikeoutGame: Bool {
+        completedGames.flatMap(\.highlights).contains { h in
+            h.kind == .pitching && h.description.contains("K") &&
+            (h.description.contains("300") || h.description.contains("15 K") || h.description.contains("16 K") || h.description.contains("17 K") || h.description.contains("18 K") || h.description.contains("19 K") || h.description.contains("20 K"))
+        }
+    }
+
+    /// Saw a grand slam live.
+    private var witnessedGrandSlam: Bool {
+        completedGames.flatMap(\.highlights).contains { h in
+            h.description.lowercased().contains("grand slam")
+        }
+    }
+
+    /// Saw an inside-the-park home run.
+    private var witnessedInsideTheParkHR: Bool {
+        completedGames.flatMap(\.highlights).contains { h in
+            h.description.lowercased().contains("inside the park")
         }
     }
 
@@ -952,6 +1150,9 @@ struct Achievement: Identifiable {
     let unlocked: Bool
     let tint: Color
     let tier: Tier
+    /// Hidden achievements only appear in the grid once unlocked.
+    /// They're the rare, stadium-specific, and surprise badges.
+    var hidden: Bool = false
 
     enum Tier { case free, pro }
 }

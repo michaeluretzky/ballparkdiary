@@ -24,6 +24,14 @@ struct StatsView: View {
                                 .padding(.horizontal, 16)
                         }
 
+                        // Time at the ballpark
+                        TimeWatchedCard()
+                            .padding(.horizontal, 16)
+
+                        // Deep numbers
+                        DeepNumbersCard()
+                            .padding(.horizontal, 16)
+
                         // Record / win pct
                         RecordCard()
                             .padding(.horizontal, 16)
@@ -781,5 +789,156 @@ private struct LockedBallparkQuestCard: View {
         }
         .padding(16)
         .nightCard()
+    }
+}
+
+// MARK: - Time watched
+
+private struct TimeWatchedCard: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.badge.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("Time at the Ballpark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(store.totalTimeLabel)
+                        .font(.scoreboard(30, weight: .black))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("total watched")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(store.seasonsActive)")
+                        .font(.scoreboard(22, weight: .black))
+                        .foregroundStyle(Theme.lights)
+                    Text(store.seasonsActive == 1 ? "season" : "seasons")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
+
+            if store.totalMinutesWatched > 0 {
+                let avgMin = store.totalMinutesWatched / max(1, store.completedGames.count)
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                    Text("~ \(avgMin) min per game")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textMuted)
+                    Spacer()
+                    if store.baseballAge > 0 {
+                        Text("Since \(formattedFirstYear)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .nightCardDeep()
+    }
+
+    private var formattedFirstYear: String {
+        guard let first = store.completedGames.map(\.date).min() else { return "" }
+        return String(Calendar.current.component(.year, from: first))
+    }
+}
+
+// MARK: - Deep numbers
+
+private struct DeepNumbersCard: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.clay)
+                Text("Deeper Numbers")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            HStack(spacing: 0) {
+                DeepStatTile(
+                    value: milesString,
+                    label: "Miles traveled",
+                    icon: "arrow.triangle.swap"
+                )
+                Divider().frame(height: 36).background(Color.white.opacity(0.08))
+                DeepStatTile(
+                    value: String(format: "%.1f", store.averageRunsPerGame),
+                    label: "Avg runs/game",
+                    icon: "plus.forwardslash.minus"
+                )
+                Divider().frame(height: 36).background(Color.white.opacity(0.08))
+                DeepStatTile(
+                    value: "\(store.oneRunGames)",
+                    label: "One-run games",
+                    icon: "scissors"
+                )
+            }
+
+            if let best = store.bestMonth {
+                Divider().background(Color.white.opacity(0.08))
+                HStack(spacing: 8) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text("Best month: \(best.name)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("· \(String(format: "%.0f", best.winPct * 100))% win rate over \(best.games) games")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                }
+            }
+        }
+        .padding(16)
+        .nightCard()
+    }
+
+    private var milesString: String {
+        let m = store.milesTraveled
+        if m >= 1000 { return String(format: "%.0fK", m / 1000) }
+        return String(format: "%.0f", m)
+    }
+}
+
+private struct DeepStatTile: View {
+    let value: String
+    let label: String
+    let icon: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(alignment: .lastTextBaseline, spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.textMuted)
+                Text(value)
+                    .font(.scoreboard(20, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.textMuted)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
