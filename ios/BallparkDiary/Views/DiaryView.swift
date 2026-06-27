@@ -8,6 +8,7 @@ struct DiaryView: View {
     @State private var gameToDelete: AttendedGame? = nil
     @State private var showDeleteConfirm = false
     @State private var navigationPath = NavigationPath()
+    @State private var yearFilter: Int? = nil
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -22,7 +23,11 @@ struct DiaryView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
 
-                        if !store.upcomingGames.isEmpty {
+                        YearFilterBar(selectedYear: $yearFilter, availableYears: availableYears)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+
+                        if !store.upcomingGames.isEmpty && yearFilter == nil {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
                                     Circle()
@@ -59,19 +64,19 @@ struct DiaryView: View {
                             }
                         }
 
-                        ForEach(Array(groupedGames.enumerated()), id: \.element.0) { _, group in
+                        ForEach(Array(filteredGroupedGames.enumerated()), id: \.element.0) { _, group in
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
                                     Rectangle()
                                         .fill(store.favoriteTeam.primary.opacity(0.6))
-                                        .frame(width: 24, height: 2)
+                                        .frame(width: 32, height: 3)
                                         .clipShape(.capsule)
                                     Text(group.0)
-                                        .font(.system(size: 13, weight: .bold))
+                                        .font(.system(size: 16, weight: .black))
                                         .foregroundStyle(.white)
                                 }
                                 .padding(.horizontal, 20)
-                                .padding(.top, 6)
+                                .padding(.top, 10)
 
                                 ForEach(group.1) { game in
                                     NavigationLink(value: game) {
@@ -175,7 +180,19 @@ struct DiaryView: View {
         }
         return groups
             .sorted { $0.key > $1.key }
-            .map { ("\($0.key) Season", $0.value.sorted { $0.date > $1.date }) }
+            .map { ("\($0.key)", $0.value.sorted { $0.date > $1.date }) }
+    }
+
+    private var filteredGroupedGames: [(String, [AttendedGame])] {
+        if let year = yearFilter {
+            return groupedGames.filter { $0.0 == "\(year)" }
+        }
+        return groupedGames
+    }
+
+    private var availableYears: [Int] {
+        let years = Set(store.completedGames.map { Calendar.current.component(.year, from: $0.date) })
+        return years.sorted(by: >)
     }
 
     /// Navigate to a freshly imported game so the user can verify the data.
@@ -250,7 +267,6 @@ struct GameCard: View {
                 HStack(alignment: .center, spacing: 0) {
                     dateBadge
                     Spacer()
-                    scoreBlock
                 }
                 .padding(.horizontal, 14)
                 .padding(.top, 12)
@@ -345,58 +361,15 @@ struct GameCard: View {
     private var dateBadge: some View {
         HStack(spacing: 8) {
             Text(game.date.formatted(.dateTime.month(.abbreviated)))
-                .font(.caps(10, weight: .heavy))
+                .font(.caps(11, weight: .heavy))
                 .tracking(1)
-                .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
+                .foregroundStyle(.white)
             Text(game.date.formatted(.dateTime.day()))
                 .font(.stat(20, weight: .heavy))
                 .foregroundStyle(.white)
             Text(String(Calendar.current.component(.year, from: game.date)))
                 .font(.stat(11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.6))
-        }
-    }
-
-    // MARK: Score block
-
-    private var scoreBlock: some View {
-        Group {
-            if game.isUpcoming {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Theme.lights)
-                    Text(game.date.formatted(.dateTime.hour().minute()))
-                        .font(.stat(14, weight: .heavy))
-                        .foregroundStyle(.white)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Theme.lights.opacity(0.10))
-                )
-            } else {
-                HStack(spacing: 8) {
-                    Text(game.userWon ? "W" : "L")
-                        .font(.scoreboard(13, weight: .black))
-                        .foregroundStyle(game.userWon ? Theme.grass : Theme.foul)
-                        .frame(width: 26, height: 26)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill((game.userWon ? Theme.grass : Theme.foul).opacity(0.15))
-                        )
-                    Text(game.scoreString)
-                        .font(.stat(14, weight: .heavy))
-                        .foregroundStyle(.white)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Theme.cardElevated)
-                )
-            }
         }
     }
 
@@ -422,7 +395,7 @@ private struct TeamChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            TeamLogoView(team: team, size: 36, showGloss: false)
+            TeamLogoView(team: team, size: 42, showGloss: false)
             Text(team.fullName)
                 .font(.stat(11, weight: .heavy))
                 .foregroundStyle(primary ? .white : .white.opacity(0.65))
@@ -508,5 +481,58 @@ private struct EmptyTip: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Theme.cardElevated.opacity(0.6))
         )
+    }
+}
+
+// MARK: - Year filter
+
+private struct YearFilterBar: View {
+    @Binding var selectedYear: Int?
+    let availableYears: [Int]
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                FilterChip(label: "All", isSelected: selectedYear == nil) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedYear = nil
+                    }
+                }
+                ForEach(availableYears, id: \.self) { year in
+                    FilterChip(label: "\(year)", isSelected: selectedYear == year) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedYear = (selectedYear == year) ? nil : year
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+}
+
+private struct FilterChip: View {
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 13, weight: isSelected ? .heavy : .semibold))
+                .foregroundStyle(isSelected ? .white : .white.opacity(0.6))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Theme.clay : Theme.cardElevated)
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(isSelected ? Theme.clay.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }

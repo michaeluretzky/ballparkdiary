@@ -369,11 +369,11 @@ private struct TicketStubReal: View {
                 }
                 .padding(.horizontal, 8)
 
-                // Small logo area
+                // Team logo area
                 HStack(spacing: 0) {
                     Spacer()
-                    TeamLogoView(team: game.homeTeam, size: 28, showGloss: false)
-                        .padding(.trailing, 12)
+                    TeamLogoView(team: game.homeTeam, size: 40, showGloss: false)
+                        .padding(.trailing, 10)
                 }
             }
 
@@ -393,11 +393,7 @@ private struct TicketStubReal: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(Theme.parchmentInk)
                             .lineLimit(1)
-                        if !game.isUpcoming {
-                            Text(game.scoreString)
-                                .font(.stat(12, weight: .heavy))
-                                .foregroundStyle(Theme.parchmentInk.opacity(0.6))
-                        }
+
                     }
 
                     Text(game.ballpark.name)
@@ -445,6 +441,10 @@ private struct TicketStubReal: View {
                     Text("ONE")
                         .font(.scoreboard(16, weight: .black))
                         .foregroundStyle(Theme.parchmentInk)
+                    Text(game.date.formatted(.dateTime.day()))
+                        .font(.stat(13, weight: .heavy))
+                        .foregroundStyle(Theme.parchmentInk)
+                        .padding(.top, 1)
                     if !game.verified {
                         Text("UNVERIFIED")
                             .font(.system(size: 6, weight: .bold))
@@ -453,9 +453,6 @@ private struct TicketStubReal: View {
                             .padding(.vertical, 2)
                             .background(RoundedRectangle(cornerRadius: 3).strokeBorder(Theme.foul.opacity(0.3)))
                     }
-                    Text(game.date.formatted(.dateTime.day()))
-                        .font(.scoreboard(12, weight: .heavy))
-                        .foregroundStyle(Theme.parchmentInk.opacity(0.6))
                 }
                 .padding(.vertical, 10)
                 .padding(.horizontal, 8)
@@ -524,6 +521,15 @@ private struct StubField: View {
 
 private struct BallparkPanel: View {
     let game: AttendedGame
+    @State private var funFactIndex: Int = 0
+
+    private var park: Ballpark { game.ballpark }
+
+    /// Rotate through the park's discovery facts plus trivia.
+    private var funFacts: [String] {
+        let discoveries = Ballpark.discoveries[park.id] ?? []
+        return [park.trivia] + discoveries
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -532,7 +538,7 @@ private struct BallparkPanel: View {
                     .fill(game.homeTeam.primary)
                     .frame(width: 3, height: 18)
                     .clipShape(.capsule)
-                Text(game.ballpark.nickname ?? game.ballpark.name)
+                Text(park.name)
                     .font(.headline(16))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
@@ -540,19 +546,78 @@ private struct BallparkPanel: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
 
-            BallparkSnapshot(ballpark: game.ballpark)
+            BallparkSnapshot(ballpark: park)
                 .frame(height: 200)
                 .clipShape(.rect(cornerRadius: 12))
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
 
-            Text(game.ballpark.trivia)
+            // Stadium facts strip
+            HStack(spacing: 16) {
+                StadiumFact(label: "Capacity", value: park.capacity.formatted(.number))
+                StadiumFact(label: "Opened", value: "\(park.opened)")
+                StadiumFact(label: "Surface", value: park.surface)
+                StadiumFact(label: "Roof", value: park.roof.rawValue)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
+            // Rotating fun fact
+            Button {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    funFactIndex = (funFactIndex + 1) % funFacts.count
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text(funFacts[funFactIndex])
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineSpacing(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Image(systemName: "shuffle")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.lights.opacity(0.06))
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+            }
+            .buttonStyle(.plain)
+
+            // Trivia
+            Text(park.trivia)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textSecondary)
                 .lineSpacing(2)
                 .padding(16)
         }
         .nightCard()
+    }
+}
+
+private struct StadiumFact: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.caps(9, weight: .heavy))
+                .tracking(1.2)
+                .foregroundStyle(Theme.textMuted)
+            Text(value)
+                .font(.stat(13, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+        }
     }
 }
 
@@ -682,7 +747,7 @@ private struct HighlightsPanel: View {
 
                         Image(systemName: h.symbol)
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(h.kind == .walkoff ? Theme.lights : TeamColors.from(team: game.homeTeam).primary)
+                            .foregroundStyle(Theme.textPrimary)
                             .frame(width: 24, height: 24)
 
                         Text(h.description)

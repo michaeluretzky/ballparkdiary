@@ -310,6 +310,7 @@ private struct AchievementsPanel: View {
     @Environment(StoreViewModel.self) private var storeKit
     @State private var expanded: Bool = false
     @State private var showPaywall: Bool = false
+    @State private var selectedAchievement: Achievement?
 
     /// Layout: show all unlocked first, then locked. Pro-gated locked badges
     /// show a lock icon for free users and are fully visible for Pro users.
@@ -339,7 +340,9 @@ private struct AchievementsPanel: View {
                     if a.tier == .pro && !storeKit.isPremium {
                         LockedAchievementMini(a: a, onTap: { showPaywall = true })
                     } else {
-                        AchievementMini(a: a)
+                        AchievementMini(a: a) {
+                            selectedAchievement = a
+                        }
                     }
                 }
             }
@@ -363,16 +366,23 @@ private struct AchievementsPanel: View {
         .sheet(isPresented: $showPaywall) {
             PaywallView(store: storeKit)
         }
+        .sheet(item: $selectedAchievement) { achievement in
+            AchievementDetailSheet(achievement: achievement, store: store)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 
 /// Compact 3-column achievement badge — just the icon with a subtle glow if unlocked.
 private struct AchievementMini: View {
     let a: Achievement
+    var onTap: () -> Void = {}
     @State private var shimmer: Bool = false
 
     var body: some View {
-        VStack(spacing: 6) {
+        Button(action: onTap) {
+            VStack(spacing: 6) {
             ZStack {
                 if a.unlocked {
                     Circle()
@@ -412,6 +422,8 @@ private struct AchievementMini: View {
         .opacity(a.unlocked ? 1.0 : 0.55)
         .onAppear { if a.unlocked { shimmer = true } }
         .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: shimmer)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -940,5 +952,203 @@ private struct DeepStatTile: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Achievement detail sheet
+
+private struct AchievementDetailSheet: View {
+    let achievement: Achievement
+    let store: DiaryStore
+
+    /// Games that contributed to unlocking this achievement.
+    private var contributingGames: [AttendedGame] {
+        store.completedGames.filter { g in achievement(game: g) }
+    }
+
+    /// Check whether a specific game contributed to this achievement.
+    private func achievement(game g: AttendedGame) -> Bool {
+        switch achievement.id {
+        // ── Collection ──
+        case "first":         return true // all games contribute
+        case "five_parks":    return store.ballparkCount >= 5 && store.visitedBallparkIds.contains(g.ballparkId)
+        case "ten_parks":     return store.ballparkCount >= 10 && store.visitedBallparkIds.contains(g.ballparkId)
+        case "twenty_parks":  return store.ballparkCount >= 20 && store.visitedBallparkIds.contains(g.ballparkId)
+        case "thirty_parks":  return store.ballparkCount == 30 && store.visitedBallparkIds.contains(g.ballparkId)
+        case "coast":         return true // coast to coast
+        // ── Division ──
+        case "div_ale":       return DiaryStore.alEast.teamIds.contains(g.homeTeamId) || DiaryStore.alEast.teamIds.contains(g.awayTeamId)
+        case "div_alc":       return DiaryStore.alCentral.teamIds.contains(g.homeTeamId) || DiaryStore.alCentral.teamIds.contains(g.awayTeamId)
+        case "div_alw":       return DiaryStore.alWest.teamIds.contains(g.homeTeamId) || DiaryStore.alWest.teamIds.contains(g.awayTeamId)
+        case "div_nle":       return DiaryStore.nlEast.teamIds.contains(g.homeTeamId) || DiaryStore.nlEast.teamIds.contains(g.awayTeamId)
+        case "div_nlc":       return DiaryStore.nlCentral.teamIds.contains(g.homeTeamId) || DiaryStore.nlCentral.teamIds.contains(g.awayTeamId)
+        case "div_nlw":       return DiaryStore.nlWest.teamIds.contains(g.homeTeamId) || DiaryStore.nlWest.teamIds.contains(g.awayTeamId)
+        // ── Game experience ──
+        case "extras":        return g.highlights.contains { Int($0.inning.dropFirst()) ?? 0 >= 10 }
+        case "walkoff":       return g.highlights.contains { $0.kind == .walkoff }
+        case "blowout":       return abs(g.homeScore - g.awayScore) >= 10
+        case "duel":          return g.totalRuns <= 2
+        case "shutout":       return g.homeScore == 0 || g.awayScore == 0
+        case "slugfest":      return g.highlights.filter { $0.kind == .homeRun }.count >= 5
+        case "sunday":        return Calendar.current.component(.weekday, from: g.date) == 1
+        case "rain":          return g.weather == .rain
+        // ── Fan dedication ──
+        case "die_hard", "iron_fan", "silver_slugger", "century", "back_to_back", "streak", "streak5":
+            return true
+        // ── Road / rivalry ──
+        case "road_warrior", "international", "dome_dweller": return true
+        case "rivalry_subway":   return ["nyy", "nym"].contains(g.homeTeamId) && ["nyy", "nym"].contains(g.awayTeamId)
+        case "rivalry_freeway":  return ["lad", "laa"].contains(g.homeTeamId) && ["lad", "laa"].contains(g.awayTeamId)
+        case "rivalry_crosstown": return ["chc", "cws"].contains(g.homeTeamId) && ["chc", "cws"].contains(g.awayTeamId)
+        case "rivalry_ohio":     return ["cin", "cle"].contains(g.homeTeamId) && ["cin", "cle"].contains(g.awayTeamId)
+        case "rivalry_lonestar": return ["tex", "hou"].contains(g.homeTeamId) && ["tex", "hou"].contains(g.awayTeamId)
+        // ── Hidden ──
+        default:
+            if achievement.id.hasPrefix("hid_") {
+                let parkId = parkForHidden(id: achievement.id)
+                if let parkId { return g.ballparkId == parkId }
+                if achievement.id == "hid_classic_trio" { return true }
+                if achievement.id == "hid_one_run"   { return abs(g.homeScore - g.awayScore) == 1 }
+                if achievement.id == "hid_blowout15" { return abs(g.homeScore - g.awayScore) >= 15 }
+                if achievement.id == "hid_marathon"  { return g.highlights.contains { Int($0.inning.dropFirst()) ?? 0 >= 15 } }
+                if achievement.id == "hid_grand_slam" { return g.highlights.contains { $0.description.lowercased().contains("grand slam") } }
+                if achievement.id == "hid_decade", achievement.id == "hid_10k_miles", achievement.id == "hid_10000", achievement.id == "hid_iron_butt" {
+                    return true
+                }
+                return !g.milestones.isEmpty
+            }
+            return true
+        }
+    }
+
+    private func parkForHidden(id: String) -> String? {
+        let map: [String: String] = [
+            "hid_fenway": "fenway-park", "hid_wrigley": "wrigley-field",
+            "hid_bronx": "yankee-stadium", "hid_ravine": "dodger-stadium",
+            "hid_splash": "oracle-park", "hid_gateway": "busch-stadium",
+            "hid_milehigh": "coors-field", "hid_bigA": "angel-stadium",
+            "hid_fountain": "kauffman-stadium", "hid_warehouse": "camden-yards",
+            "hid_bridge": "pnc-park"
+        ]
+        return map[id]
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.nightGradient.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 18) {
+                        // Hero badge
+                        VStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(achievement.tint.opacity(0.14))
+                                    .frame(width: 80, height: 80)
+                                Circle()
+                                    .strokeBorder(achievement.tint.opacity(0.35), lineWidth: 2)
+                                    .frame(width: 80, height: 80)
+                                Image(systemName: achievement.symbol)
+                                    .font(.system(size: 32, weight: .bold))
+                                    .foregroundStyle(achievement.tint)
+                            }
+
+                            Text(achievement.title)
+                                .font(.scoreboard(24, weight: .black))
+                                .foregroundStyle(Theme.textPrimary)
+
+                            Text(achievement.detail)
+                                .font(.system(size: 15))
+                                .foregroundStyle(Theme.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 20)
+
+                            if achievement.unlocked {
+                                Label("Unlocked", systemImage: "checkmark.seal.fill")
+                                    .font(.caps(11, weight: .heavy))
+                                    .foregroundStyle(Theme.grass)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        Capsule().fill(Theme.grass.opacity(0.12))
+                                    )
+                            } else {
+                                Label("Locked", systemImage: "lock.fill")
+                                    .font(.caps(11, weight: .heavy))
+                                    .foregroundStyle(Theme.textMuted)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        Capsule().fill(Theme.cardElevated)
+                                    )
+                            }
+                        }
+                        .padding(.top, 8)
+
+                        // Contributing games
+                        if achievement.unlocked && !contributingGames.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("GAMES CONTRIBUTING")
+                                    .font(.caps(10, weight: .heavy))
+                                    .tracking(2)
+                                    .foregroundStyle(Theme.clay)
+                                    .padding(.horizontal, 4)
+
+                                ForEach(contributingGames.prefix(10)) { game in
+                                    NavigationLink(value: game) {
+                                        HStack(spacing: 12) {
+                                            ZStack {
+                                                Circle()
+                                                    .fill(game.homeTeam.primary.opacity(0.2))
+                                                    .frame(width: 36, height: 36)
+                                                Text(game.homeTeam.abbreviation)
+                                                    .font(.system(size: 9, weight: .heavy))
+                                                    .foregroundStyle(game.homeTeam.primary)
+                                            }
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("\(game.awayTeam.fullName) @ \(game.homeTeam.fullName)")
+                                                    .font(.system(size: 14, weight: .semibold))
+                                                    .foregroundStyle(Theme.textPrimary)
+                                                    .lineLimit(1)
+                                                Text(game.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted)))
+                                                    .font(.system(size: 12))
+                                                    .foregroundStyle(Theme.textSecondary)
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundStyle(Theme.textMuted)
+                                        }
+                                        .padding(10)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .fill(Theme.cardElevated)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
+                                if contributingGames.count > 10 {
+                                    Text("+ \(contributingGames.count - 10) more games")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Theme.textMuted)
+                                        .padding(.leading, 4)
+                                }
+                            }
+                            .padding(16)
+                            .nightCardDeep()
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 40)
+                }
+            }
+            .navigationTitle(achievement.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: AttendedGame.self) { game in
+                GameDetailView(game: game)
+            }
+        }
     }
 }

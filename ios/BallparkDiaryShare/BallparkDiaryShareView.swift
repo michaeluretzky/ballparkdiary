@@ -232,8 +232,9 @@ struct ShareView: View {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         #endif
 
-        // Auto-open the main app after a short confirmation pause.
-        try? await Task.sleep(for: .seconds(1.2))
+        // Auto-open the main app after a confirmation pause long enough
+        // for App Group defaults to sync to the host app.
+        try? await Task.sleep(for: .seconds(1.8))
         openApp()
     }
 

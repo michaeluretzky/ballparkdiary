@@ -733,6 +733,17 @@ final class DiaryStore {
         await refreshUpcomingScores()
         await enrichExistingGames()
         await reVerifyUnverifiedGames()
+        
+        // If there are still upcoming games, schedule an extra check
+        // a few minutes later to catch scores that post after the game.
+        if !upcomingGames.isEmpty {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(180))
+                await refreshUpcomingScores()
+                save()
+            }
+        }
+        
         return imported
     }
 
