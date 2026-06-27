@@ -14,7 +14,8 @@ struct ManualGameEntryView: View {
     @State private var awayTeamId: String = Team.redSox.id
     @State private var homeScore: Int = 0
     @State private var awayScore: Int = 0
-    @State private var userRootedForHome: Bool = true
+    @State private var userRootedForHome: Bool? = true
+    @State private var userRootedForNeither: Bool = false
     @State private var section: String = ""
     @State private var row: String = ""
     @State private var seat: String = ""
@@ -131,9 +132,22 @@ struct ManualGameEntryView: View {
                             }
 
                             FormCard(title: "You rooted for") {
-                                Picker("Rooted for", selection: $userRootedForHome) {
-                                    Text(Team.by(id: resolvedHomeTeamId)?.fullName ?? "Home").tag(true)
-                                    Text(Team.by(id: awayTeamId)?.fullName ?? "Away").tag(false)
+                                Picker("Rooted for", selection: Binding<Int>(
+                                    get: {
+                                        if userRootedForNeither { return 2 }
+                                        return userRootedForHome == true ? 0 : 1
+                                    },
+                                    set: { val in
+                                        switch val {
+                                        case 0: userRootedForHome = true; userRootedForNeither = false
+                                        case 1: userRootedForHome = false; userRootedForNeither = false
+                                        default: userRootedForHome = nil; userRootedForNeither = true
+                                        }
+                                    }
+                                )) {
+                                    Text(Team.by(id: resolvedHomeTeamId)?.fullName ?? "Home").tag(0)
+                                    Text(Team.by(id: awayTeamId)?.fullName ?? "Away").tag(1)
+                                    Text("Neither").tag(2)
                                 }
                                 .pickerStyle(.segmented)
                             }
@@ -360,7 +374,7 @@ struct ManualGameEntryView: View {
             awayTeamId: awayTeamId,
             homeScore: homeScore,
             awayScore: awayScore,
-            userRootedForHome: userRootedForHome,
+            userRootedForHome: userRootedForNeither ? nil : userRootedForHome,
             section: section.isEmpty ? "—" : section,
             row: row.isEmpty ? "—" : row,
             seat: seat.isEmpty ? "—" : seat,

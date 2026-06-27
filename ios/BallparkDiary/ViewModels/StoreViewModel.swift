@@ -40,6 +40,9 @@ final class StoreViewModel {
         // initializers, so we schedule our tasks on the next run loop.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            // Proactive check: fetch customer info immediately so premium status
+            // is available right away instead of waiting for the stream to emit.
+            Task { await self.checkStatus() }
             Task { await self.listenForUpdates() }
             Task { await self.fetchOfferings() }
         }

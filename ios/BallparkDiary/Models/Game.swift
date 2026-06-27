@@ -9,7 +9,8 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     let awayTeamId: String
     let homeScore: Int
     let awayScore: Int
-    let userRootedForHome: Bool
+    /// true = rooted for home, false = rooted for away, nil = neutral observer.
+    let userRootedForHome: Bool?
     let section: String
     let row: String
     let seat: String
@@ -46,8 +47,14 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     var totalRuns: Int { homeScore + awayScore }
     var winnerTeam: Team { homeScore > awayScore ? homeTeam : awayTeam }
     var userWon: Bool {
+        guard let rootedForHome = userRootedForHome else { return false }
         let homeWon = homeScore > awayScore
-        return userRootedForHome ? homeWon : !homeWon
+        return rootedForHome ? homeWon : !homeWon
+    }
+    /// The team the user was rooting for, if any.
+    var rootedTeam: Team? {
+        guard let rootedForHome = userRootedForHome else { return nil }
+        return rootedForHome ? homeTeam : awayTeam
     }
     var scoreString: String { isUpcoming ? "vs" : "\(awayScore) – \(homeScore)" }
 
@@ -78,7 +85,8 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     }
 
     /// Return a copy with the user's rooting interest changed to the given side.
-    func rooting(forHome rootedForHome: Bool) -> AttendedGame {
+    /// Pass nil to indicate neutral (rooting for neither team).
+    func rooting(forHome rootedForHome: Bool?) -> AttendedGame {
         AttendedGame(
             id: id, date: date, ballparkId: ballparkId,
             homeTeamId: homeTeamId, awayTeamId: awayTeamId,
@@ -397,13 +405,13 @@ extension AttendedGame {
             let ballpark = Ballpark.by(teamId: homeTeam.id)
         else { return nil }
 
-        let rootedForHome: Bool
+        let rootedForHome: Bool?
         if favoriteTeamId == homeTeam.id {
             rootedForHome = true
         } else if favoriteTeamId == awayTeam.id {
             rootedForHome = false
         } else {
-            rootedForHome = true
+            rootedForHome = nil  // neutral — neither team is the user's favorite
         }
 
         let weather: Weather = {

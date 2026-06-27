@@ -34,6 +34,14 @@ final class DiaryStore {
     /// Games that couldn't be confirmed and were dropped — surfaced to user.
     var droppedCandidates: [DroppedCandidate] = []
 
+    /// Potential duplicate entries detected during import. The user reviews
+    /// each one and decides to keep or discard the flagged game.
+    var flaggedDuplicates: [FlaggedDuplicate] = []
+
+    /// When true, near-duplicate tickets are silently auto-deleted without
+    /// prompting. The user can toggle this from the flagged duplicates section.
+    var autoDeleteDuplicates: Bool = false
+
     /// Non-nil when a deep-link requests a tab switch. Observed by MainTabsView.
     var requestedTab: String? = nil
 
@@ -58,6 +66,7 @@ final class DiaryStore {
 
     private let defaults = UserDefaults.standard
     private let storageKey = "ballparkdiary.state.v2"
+    private let autoDeleteKey = "ballparkdiary.autoDeleteDuplicates"
 
     /// Max failed import attempts before dropping a payload.
     private static let maxImportAttempts = 5
@@ -67,6 +76,7 @@ final class DiaryStore {
     init() {
         load()
         collapseDuplicates()
+        autoDeleteDuplicates = defaults.bool(forKey: autoDeleteKey)
     }
 
     /// Persisted choice of the user's home team. Used to pre-rotate the map
@@ -128,7 +138,7 @@ final class DiaryStore {
     var mostSeenOpponent: (team: Team, count: Int)? {
         var seen: [String: Int] = [:]
         for g in completedGames {
-            let opp = g.userRootedForHome ? g.awayTeamId : g.homeTeamId
+            let opp = g.userRootedForHome == true ? g.awayTeamId : g.homeTeamId
             seen[opp, default: 0] += 1
         }
         guard let top = seen.max(by: { $0.value < $1.value }), let team = Team.by(id: top.key) else { return nil }
@@ -467,7 +477,7 @@ final class DiaryStore {
     var roadWarrior: Bool {
         let fav = favoriteTeam
         let awayParks = completedGames
-            .filter { ($0.homeTeamId == fav.id && !$0.userRootedForHome) || ($0.awayTeamId == fav.id && $0.userRootedForHome) }
+            .filter { ($0.homeTeamId == fav.id && $0.userRootedForHome == false) || ($0.awayTeamId == fav.id && $0.userRootedForHome == true) }
             .map(\.ballparkId)
         return Set(awayParks).count >= 3
     }
@@ -599,15 +609,159 @@ final class DiaryStore {
         return games.contains { canonicalKey($0) == key }
     }
 
+    // MARK: - Fuzzy duplicate detection
+
+    /// Scans the existing diary for entries that are suspiciously similar to
+    /// this candidate — same ballpark within a day, or matching confirmation
+    /// number. Returns the best-matching existing game, or nil.
+    func findNearDuplicate(for candidate: NearDuplicateCandidate) -> AttendedGame? {
+        let cal = Calendar(identifier: .gregorian)
+
+        // Strongest signal: same confirmation number on a different game.
+        if let conf = candidate.confirmation, !conf.trimmingCharacters(in: .whitespaces).isEmpty {
+            if let match = games.first(where: { $0.confirmation == conf && $0.id != candidate.proposedId }) {
+                return match
+            }
+        }
+
+        // Same ballpark + date within ±1 day (possible date-parsing variance).
+        let candidateDay = cal.startOfDay(for: candidate.date)
+        for game in games where game.ballparkId == candidate.ballparkId && game.id != candidate.proposedId {
+            let gameDay = cal.startOfDay(for: game.date)
+            let diff = abs(gameDay.timeIntervalSince(candidateDay))
+            if diff <= 86400 { // ±1 day
+                // Same ballpark one day apart — likely same game.
+                return game
+            }
+        }
+
+        // Same matchup within ±3 days (possible series overlap).
+        let candidateTeams = Set([candidate.homeTeamId, candidate.awayTeamId])
+        for game in games where game.id != candidate.proposedId {
+            let gameTeams = Set([game.homeTeamId, game.awayTeamId])
+            guard candidateTeams == gameTeams else { continue }
+            let gameDay = cal.startOfDay(for: game.date)
+            let diff = abs(gameDay.timeIntervalSince(candidateDay))
+            if diff <= 3 * 86400 { return game }
+        }
+
+        return nil
+    }
+
+    /// Add a flagged duplicate for user review.
+    private func flagDuplicate(
+        candidate: NearDuplicateCandidate,
+        existingGame: AttendedGame,
+        source: String
+    ) {
+        let flagged = FlaggedDuplicate(
+            id: UUID(),
+            candidateDate: candidate.date,
+            candidateHomeTeamId: candidate.homeTeamId,
+            candidateAwayTeamId: candidate.awayTeamId,
+            candidateBallparkId: candidate.ballparkId,
+            candidateConfirmation: candidate.confirmation,
+            candidateSection: candidate.section,
+            candidateRow: candidate.row,
+            candidateSeat: candidate.seat,
+            candidateSource: source,
+            existingGameId: existingGame.id,
+            detectedAt: .now
+        )
+        flaggedDuplicates.append(flagged)
+        save()
+    }
+
+    /// Remove a flagged duplicate (the user chose to discard the new entry).
+    func dismissFlaggedDuplicate(_ id: UUID) {
+        flaggedDuplicates.removeAll { $0.id == id }
+        save()
+    }
+
+    /// Accept a flagged duplicate: delete the existing game and replace it
+    /// with the flagged candidate (the user confirms the new entry is better).
+    func acceptFlaggedDuplicate(_ flagged: FlaggedDuplicate) {
+        // Delete the existing game.
+        deleteGame(flagged.existingGameId)
+        // Build and add the new game.
+        let game = AttendedGame(
+            id: UUID(),
+            date: flagged.candidateDate,
+            ballparkId: flagged.candidateBallparkId,
+            homeTeamId: flagged.candidateHomeTeamId,
+            awayTeamId: flagged.candidateAwayTeamId,
+            homeScore: 0, awayScore: 0,
+            userRootedForHome: favoriteTeamId == flagged.candidateHomeTeamId ? true
+                : (favoriteTeamId == flagged.candidateAwayTeamId ? false : nil),
+            section: flagged.candidateSection,
+            row: flagged.candidateRow,
+            seat: flagged.candidateSeat,
+            confirmation: flagged.candidateConfirmation,
+            weather: .night,
+            firstPitchTempF: 0,
+            attendance: 0,
+            durationMinutes: 0,
+            highlights: [],
+            milestones: [],
+            emailSubject: flagged.candidateSource,
+            source: flagged.candidateSource,
+            status: .upcoming,
+            isVerified: false
+        )
+        addManualGame(game)
+        flaggedDuplicates.removeAll { $0.id == flagged.id }
+        save()
+    }
+
+    /// Toggle automatic duplicate deletion. When on, near-duplicates are
+    /// silently dropped without prompting the user.
+    func toggleAutoDelete() {
+        autoDeleteDuplicates.toggle()
+        defaults.set(autoDeleteDuplicates, forKey: autoDeleteKey)
+        // If turning on auto-delete, clean up any existing flagged duplicates.
+        if autoDeleteDuplicates {
+            flaggedDuplicates.removeAll()
+            save()
+        }
+    }
+
     // MARK: Manual entries
 
-    /// Add a manually entered game. Rejects duplicates by canonical key.
-    /// Returns nil if a game with the same day + teams already exists.
+    /// Add a manually entered game. Rejects exact duplicates by canonical key.
+    /// Also checks for near-duplicates and either auto-deletes (if preference
+    /// is on) or flags them for user review.
+    /// Returns nil if a game with the same day + teams already exists, or if
+    /// a near-duplicate was flagged instead of saved.
     @discardableResult
     func addManualGame(_ game: AttendedGame) -> AttendedGame? {
         let key = canonicalKey(game)
         let existingKeys = Set(games.map(canonicalKey))
         guard !existingKeys.contains(key) else { return nil }
+
+        // Check for near-duplicates.
+        let candidate = NearDuplicateCandidate(
+            proposedId: game.id,
+            date: game.date,
+            homeTeamId: game.homeTeamId,
+            awayTeamId: game.awayTeamId,
+            ballparkId: game.ballparkId,
+            confirmation: game.confirmation,
+            section: game.section,
+            row: game.row,
+            seat: game.seat
+        )
+        if let conflict = findNearDuplicate(for: candidate) {
+            if autoDeleteDuplicates {
+                return nil
+            } else {
+                flagDuplicate(
+                    candidate: candidate,
+                    existingGame: conflict,
+                    source: game.emailSubject
+                )
+                return nil
+            }
+        }
 
         let inbox = ensureInbox(.manual, label: "Manual entries")
         var existing = gamesByInbox[inbox.id] ?? []
@@ -621,9 +775,10 @@ final class DiaryStore {
         return game
     }
 
-    /// Update which team the user rooted for on a saved game. Flips the
-    /// win/loss outcome derived from `userWon` so stats stay correct.
-    func setRootedForHome(_ id: UUID, rootedForHome: Bool) {
+    /// Update which team the user rooted for on a saved game. Pass nil to
+    /// mark the user as a neutral observer. Flips the win/loss outcome derived
+    /// from `userWon` so stats stay correct.
+    func setRootedForHome(_ id: UUID, rootedForHome: Bool?) {
         for (inboxId, list) in gamesByInbox {
             guard let index = list.firstIndex(where: { $0.id == id }) else { continue }
             let g = list[index]
@@ -812,6 +967,34 @@ final class DiaryStore {
             idsToRemove.insert(payload.id)
             let key = canonicalKey(game)
             guard !existingKeys.contains(key) else { continue }
+
+            // Check for near-duplicates (same ballpark ±1 day, same confirmation no., etc.)
+            let nearDup = NearDuplicateCandidate(
+                proposedId: game.id,
+                date: game.date,
+                homeTeamId: game.homeTeamId,
+                awayTeamId: game.awayTeamId,
+                ballparkId: game.ballparkId,
+                confirmation: game.confirmation,
+                section: game.section,
+                row: game.row,
+                seat: game.seat
+            )
+            if let conflict = findNearDuplicate(for: nearDup) {
+                if autoDeleteDuplicates {
+                    // Auto-delete is on — silently drop the near-duplicate.
+                    continue
+                } else {
+                    // Flag it for user review instead of adding.
+                    flagDuplicate(
+                        candidate: nearDup,
+                        existingGame: conflict,
+                        source: game.emailSubject
+                    )
+                    continue
+                }
+            }
+
             existingKeys.insert(key)
             newGames.append(game)
         }
@@ -1034,13 +1217,16 @@ final class DiaryStore {
         gamesByInbox.removeAll()
         connectedInboxes.removeAll()
         droppedCandidates.removeAll()
+        flaggedDuplicates.removeAll()
         importAttempts.removeAll()
         lastRefreshAt = nil
+        autoDeleteDuplicates = false
         favoriteTeamId = Team.yankees.id
         hasPickedFavorite = false
         hasCompletedOnboarding = false
         hasAcceptedTerms = false
         defaults.removeObject(forKey: storageKey)
+        defaults.removeObject(forKey: autoDeleteKey)
     }
 
     // MARK: - Dedup on launch
@@ -1102,6 +1288,7 @@ final class DiaryStore {
         var inboxes: [ConnectedInbox]
         var gamesByInbox: [String: [AttendedGame]]
         var droppedCandidates: [DroppedCandidate]
+        var flaggedDuplicates: [FlaggedDuplicate]
     }
 
     private func save() {
@@ -1112,7 +1299,8 @@ final class DiaryStore {
             hasAcceptedTerms: hasAcceptedTerms,
             inboxes: connectedInboxes,
             gamesByInbox: Dictionary(uniqueKeysWithValues: gamesByInbox.map { ($0.key.uuidString, $0.value) }),
-            droppedCandidates: droppedCandidates
+            droppedCandidates: droppedCandidates,
+            flaggedDuplicates: flaggedDuplicates
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         defaults.set(data, forKey: storageKey)
@@ -1135,6 +1323,7 @@ final class DiaryStore {
         }
         gamesByInbox = Dictionary(pairs, uniquingKeysWith: { first, _ in first })
         droppedCandidates = snapshot.droppedCandidates
+        flaggedDuplicates = snapshot.flaggedDuplicates
     }
 }
 
@@ -1147,6 +1336,59 @@ struct DroppedCandidate: Identifiable, Codable, Hashable {
     let opponentMlbId: Int?
     let snippet: String
     let reason: String
+}
+
+/// Input for fuzzy duplicate detection — the minimal fields needed to check
+/// whether a candidate overlaps with an existing diary entry.
+struct NearDuplicateCandidate {
+    let proposedId: UUID
+    let date: Date
+    let homeTeamId: String
+    let awayTeamId: String
+    let ballparkId: String
+    let confirmation: String?
+    let section: String
+    let row: String
+    let seat: String
+}
+
+/// A potential duplicate entry flagged for user review. Shows both the
+/// candidate (new) entry and the existing game it conflicts with.
+struct FlaggedDuplicate: Identifiable, Codable, Hashable {
+    let id: UUID
+    let candidateDate: Date
+    let candidateHomeTeamId: String
+    let candidateAwayTeamId: String
+    let candidateBallparkId: String
+    let candidateConfirmation: String?
+    let candidateSection: String
+    let candidateRow: String
+    let candidateSeat: String
+    let candidateSource: String
+    let existingGameId: UUID
+    let detectedAt: Date
+
+    var candidateHomeTeam: Team { Team.by(id: candidateHomeTeamId) ?? .yankees }
+    var candidateAwayTeam: Team { Team.by(id: candidateAwayTeamId) ?? .redSox }
+    var candidateBallpark: Ballpark { Ballpark.by(id: candidateBallparkId) ?? Ballpark.all[0] }
+
+    /// Formatted matchup string for display.
+    var matchupLabel: String {
+        "\(candidateAwayTeam.abbreviation) @ \(candidateHomeTeam.abbreviation)"
+    }
+
+    /// Formatted date for display.
+    var formattedDate: String {
+        let fmt = DateFormatter()
+        fmt.dateStyle = .medium
+        fmt.timeStyle = .none
+        return fmt.string(from: candidateDate)
+    }
+
+    /// Whether the candidate has seat info worth showing.
+    var hasSeatInfo: Bool {
+        [candidateSection, candidateRow, candidateSeat].contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
 }
 
 // MARK: - Achievement model

@@ -21,6 +21,10 @@ struct InboxesView: View {
 
                         ShareImportCard()
 
+                        if !store.flaggedDuplicates.isEmpty {
+                            FlaggedDuplicatesSection()
+                        }
+
                         if !storeKit.isPremium {
                             ProUpgradeBanner { showPaywall = true }
                         }
@@ -393,5 +397,183 @@ private struct ManualEntryCTA: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Flagged Duplicates Section
+
+/// Shows potential duplicate tickets that were flagged during import.
+/// Each card displays the candidate game and the existing diary entry it
+/// conflicts with. The user can swipe to dismiss (keep the existing game)
+/// or tap to review and optionally replace.
+private struct FlaggedDuplicatesSection: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("POSSIBLE DUPLICATES".uppercased())
+                    .font(.caps(10, weight: .heavy))
+                    .tracking(2.5)
+                    .foregroundStyle(Theme.lights)
+                Spacer()
+                // Auto-delete toggle
+                Button {
+                    store.toggleAutoDelete()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: store.autoDeleteDuplicates ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 16))
+                            .foregroundStyle(store.autoDeleteDuplicates ? Theme.grass : Theme.textMuted)
+                        Text("Auto-delete")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 4)
+
+            ForEach(store.flaggedDuplicates) { flagged in
+                FlaggedDuplicateRow(flagged: flagged)
+            }
+        }
+    }
+}
+
+private struct FlaggedDuplicateRow: View {
+    @Environment(DiaryStore.self) private var store
+    let flagged: FlaggedDuplicate
+    @State private var offset: CGFloat = 0
+
+    private var existingGame: AttendedGame? {
+        store.game(id: flagged.existingGameId)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("Similar to an existing entry")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Spacer()
+                Text(flagged.formattedDate)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+            }
+
+            // Matchup
+            HStack(spacing: 10) {
+                TeamLogoView.compact(flagged.candidateAwayTeam, size: 30)
+                Text("@")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textMuted)
+                TeamLogoView.compact(flagged.candidateHomeTeam, size: 30)
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(flagged.candidateBallpark.name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                    if flagged.hasSeatInfo {
+                        Text("Sec \(flagged.candidateSection), Row \(flagged.candidateRow), Seat \(flagged.candidateSeat)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textMuted)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            // Existing game reference
+            if let existing = existingGame {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.swap")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.textMuted)
+                    Text("Conflicts with: \(existing.awayTeam.abbreviation) @ \(existing.homeTeam.abbreviation)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textMuted)
+                    Spacer()
+                    NavigationLink {
+                        GameDetailView(game: existing)
+                    } label: {
+                        Text("View")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.clay)
+                    }
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Theme.cardElevated)
+                )
+            }
+
+            // Actions
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.snappy) {
+                        store.dismissFlaggedDuplicate(flagged.id)
+                    }
+                } label: {
+                    Label("Keep Existing", systemImage: "checkmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.grass)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Theme.grass.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.snappy) {
+                        store.acceptFlaggedDuplicate(flagged)
+                    }
+                } label: {
+                    Label("Use New", systemImage: "arrow.triangle.swap")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.clay)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Theme.clay.opacity(0.12))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Theme.lights.opacity(0.35), lineWidth: 1)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Theme.lights.opacity(0.04))
+                )
+        )
+        .offset(x: offset)
+        .gesture(
+            DragGesture()
+                .onChanged { val in
+                    if val.translation.width < -20 {
+                        offset = val.translation.width
+                    }
+                }
+                .onEnded { val in
+                    if val.translation.width < -80 {
+                        withAnimation(.snappy) {
+                            store.dismissFlaggedDuplicate(flagged.id)
+                        }
+                    }
+                    withAnimation(.snappy) { offset = 0 }
+                }
+        )
     }
 }

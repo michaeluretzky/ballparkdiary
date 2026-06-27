@@ -459,7 +459,7 @@ private struct BallparkSnapshotCard: View {
                                 Text(g.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted)))
                                     .font(.stat(12, weight: .semibold))
                                     .foregroundStyle(Theme.textPrimary)
-                                Text("vs \(g.userRootedForHome ? g.awayTeam.fullName : g.homeTeam.fullName)")
+                                Text("vs \(g.userRootedForHome == true ? g.awayTeam.fullName : g.homeTeam.fullName)")
                                     .font(.system(size: 12))
                                     .foregroundStyle(Theme.textSecondary)
                                 Spacer()

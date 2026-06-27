@@ -256,12 +256,25 @@ private struct Scoreboard: View {
             } else {
                 HStack(spacing: 8) {
                     Capsule()
-                        .fill(liveGame.userWon ? Theme.grass : Theme.foul)
+                        .fill(resultColor)
                         .frame(width: 6, height: 6)
                     Menu {
-                        Picker("Rooted for", selection: rootedForBinding) {
-                            Text(game.awayTeam.fullName).tag(false)
-                            Text(game.homeTeam.fullName).tag(true)
+                        Picker("Rooted for", selection: Binding<Int>(
+                            get: {
+                                if liveGame.userRootedForHome == nil { return 2 }
+                                return liveGame.userRootedForHome == true ? 0 : 1
+                            },
+                            set: { val in
+                                switch val {
+                                case 0: store.setRootedForHome(game.id, rootedForHome: true)
+                                case 1: store.setRootedForHome(game.id, rootedForHome: false)
+                                default: store.setRootedForHome(game.id, rootedForHome: nil)
+                                }
+                            }
+                        )) {
+                            Text(game.homeTeam.fullName).tag(0)
+                            Text(game.awayTeam.fullName).tag(1)
+                            Text("Neither").tag(2)
                         }
                     } label: {
                         HStack(spacing: 4) {
@@ -271,7 +284,7 @@ private struct Scoreboard: View {
                             Image(systemName: "chevron.up.chevron.down")
                                 .font(.system(size: 9, weight: .heavy))
                         }
-                        .foregroundStyle(liveGame.userWon ? Theme.grass : Theme.foul)
+                        .foregroundStyle(resultColor)
                     }
                     Spacer()
                     if game.attendance > 0 || game.durationMinutes > 0 {
@@ -290,7 +303,7 @@ private struct Scoreboard: View {
     /// The live copy of this game from the store — always up to date.
     private var liveGame: AttendedGame { store.game(id: game.id) ?? game }
 
-    private var rootedForBinding: Binding<Bool> {
+    private var rootedForBinding: Binding<Bool?> {
         Binding(
             get: { liveGame.userRootedForHome },
             set: { store.setRootedForHome(game.id, rootedForHome: $0) }
@@ -304,8 +317,16 @@ private struct Scoreboard: View {
         return parts.joined(separator: " · ")
     }
 
+    private var resultColor: Color {
+        if liveGame.userRootedForHome == nil { return Theme.textMuted }
+        return liveGame.userWon ? Theme.grass : Theme.foul
+    }
+
     private var resultText: String {
-        let team = liveGame.userRootedForHome ? game.homeTeam : game.awayTeam
+        if liveGame.userRootedForHome == nil {
+            return "NEUTRAL · JUST WATCHING"
+        }
+        let team = liveGame.userRootedForHome == true ? game.homeTeam : game.awayTeam
         let won = liveGame.userWon
         return "\(won ? "WIN" : "LOSS") · ROOTED FOR \(team.fullName)"
     }
@@ -910,7 +931,8 @@ private struct EditGameSheet: View {
     @State private var section: String
     @State private var row: String
     @State private var seat: String
-    @State private var rootedForHome: Bool
+    @State private var rootedForHome: Bool?
+    @State private var rootedForNeither: Bool
     @FocusState private var focusedField: Field?
 
     enum Field: Hashable { case sec, rw, st }
@@ -921,6 +943,7 @@ private struct EditGameSheet: View {
         _row = State(initialValue: game.row == "—" ? "" : game.row)
         _seat = State(initialValue: game.seat == "—" ? "" : game.seat)
         _rootedForHome = State(initialValue: game.userRootedForHome)
+        _rootedForNeither = State(initialValue: game.userRootedForHome == nil)
     }
 
     var body: some View {
@@ -987,9 +1010,22 @@ private struct EditGameSheet: View {
                                 .tracking(2.2)
                                 .foregroundStyle(Theme.clay)
 
-                            Picker("Rooted for", selection: $rootedForHome) {
-                                Text(game.homeTeam.fullName).tag(true)
-                                Text(game.awayTeam.fullName).tag(false)
+                            Picker("Rooted for", selection: Binding<Int>(
+                                get: {
+                                    if rootedForNeither { return 2 }
+                                    return rootedForHome == true ? 0 : 1
+                                },
+                                set: { val in
+                                    switch val {
+                                    case 0: rootedForHome = true; rootedForNeither = false
+                                    case 1: rootedForHome = false; rootedForNeither = false
+                                    default: rootedForHome = nil; rootedForNeither = true
+                                    }
+                                }
+                            )) {
+                                Text(game.homeTeam.fullName).tag(0)
+                                Text(game.awayTeam.fullName).tag(1)
+                                Text("Neither").tag(2)
                             }
                             .pickerStyle(.segmented)
                         }
@@ -1017,8 +1053,9 @@ private struct EditGameSheet: View {
                         let r = row.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : row
                         let se = seat.trimmingCharacters(in: .whitespaces).isEmpty ? "—" : seat
                         store.setSeatInfo(game.id, section: s, row: r, seat: se)
-                        if rootedForHome != game.userRootedForHome {
-                            store.setRootedForHome(game.id, rootedForHome: rootedForHome)
+                        let newRoot: Bool? = rootedForNeither ? nil : rootedForHome
+                        if newRoot != game.userRootedForHome {
+                            store.setRootedForHome(game.id, rootedForHome: newRoot)
                         }
                         dismiss()
                     }
