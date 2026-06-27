@@ -54,20 +54,30 @@ nonisolated struct HomeRunPlay: Sendable, Hashable {
     let description: String
 }
 
-nonisolated struct PitchingLine: Sendable, Hashable {
+nonisolated struct PitchingLine: Sendable, Hashable, Codable {
     let name: String
+    let playerMlbId: Int
     let teamMlbId: Int
     let inningsPitched: String
     let hits: Int
     let runs: Int
+    let earnedRuns: Int
     let walks: Int
     let strikeOuts: Int
     let hitBatsmen: Int
+    let homeRunsAllowed: Int
     let pitches: Int
     let battersFaced: Int
     let completeGames: Int
     let shutouts: Int
+    let saves: Int
+    let losses: Int
+    let holds: Int
+    let blownSaves: Int
     let isWinner: Bool
+    let careerWins: Int?
+    let careerSaves: Int?
+    let careerStrikeouts: Int?
 }
 
 /// Fetches real, completed game results from the free public MLB Stats API to
@@ -205,18 +215,49 @@ nonisolated final class MLBStatsService: Sendable {
                 guard let player = side.players["ID\(pid)"], let stat = player.stats?.pitching else { continue }
                 pitching.append(PitchingLine(
                     name: player.person?.fullName ?? "",
+                    playerMlbId: pid,
                     teamMlbId: teamMlbId,
                     inningsPitched: stat.inningsPitched ?? "0",
                     hits: stat.hits ?? 0, runs: stat.runs ?? 0,
+                    earnedRuns: stat.earnedRuns ?? 0,
                     walks: stat.baseOnBalls ?? 0, strikeOuts: stat.strikeOuts ?? 0,
                     hitBatsmen: stat.hitBatsmen ?? 0,
+                    homeRunsAllowed: stat.homeRuns ?? 0,
                     pitches: stat.numberOfPitches ?? stat.pitchesThrown ?? 0,
                     battersFaced: stat.battersFaced ?? 0,
                     completeGames: stat.completeGames ?? 0,
                     shutouts: stat.shutouts ?? 0,
-                    isWinner: winnerId != nil && pid == winnerId
+                    saves: stat.saves ?? 0,
+                    losses: stat.losses ?? 0,
+                    holds: stat.holds ?? 0,
+                    blownSaves: stat.blownSaves ?? 0,
+                    isWinner: winnerId != nil && pid == winnerId,
+                    careerWins: nil, careerSaves: nil, careerStrikeouts: nil
                 ))
             }
+        }
+
+        // Enrich notable pitchers with career totals for milestone detection.
+        for i in pitching.indices {
+            let line = pitching[i]
+            let notable = line.isWinner || line.saves > 0 || line.strikeOuts >= 6 || line.completeGames >= 1
+            guard notable else { continue }
+            let totals = await careerPitchingTotals(playerId: line.playerMlbId, beforeSeason: season)
+            let inGameWins: Int = line.isWinner ? 1 : 0
+            pitching[i] = PitchingLine(
+                name: line.name, playerMlbId: line.playerMlbId, teamMlbId: line.teamMlbId,
+                inningsPitched: line.inningsPitched, hits: line.hits, runs: line.runs,
+                earnedRuns: line.earnedRuns, walks: line.walks, strikeOuts: line.strikeOuts,
+                hitBatsmen: line.hitBatsmen, homeRunsAllowed: line.homeRunsAllowed,
+                pitches: line.pitches, battersFaced: line.battersFaced,
+                completeGames: line.completeGames, shutouts: line.shutouts,
+                saves: line.saves, losses: line.losses,
+                holds: line.holds, blownSaves: line.blownSaves,
+                isWinner: line.isWinner,
+                careerWins: totals.wins > 0 ? totals.wins + inGameWins : nil,
+                careerSaves: totals.saves > 0 ? totals.saves + line.saves : nil,
+                careerStrikeouts: totals.strikeouts > 0 ? totals.strikeouts + line.strikeOuts : nil
+            )
         }
 
         return GameDetails(
@@ -249,6 +290,45 @@ nonisolated final class MLBStatsService: Sendable {
             total += split.stat?.homeRuns ?? 0
         }
         return total
+    }
+
+    /// Career pitching totals (wins, saves, strikeouts) accumulated *before*
+    /// `season`, so the current-season game stats can be added on top. Returns
+    /// zeros if the lookup fails.
+    func careerPitchingTotals(playerId: Int, beforeSeason season: Int) async -> (wins: Int, saves: Int, strikeouts: Int) {
+        guard
+            let url = URL(string: "https://statsapi.mlb.com/api/v1/people/\(playerId)/stats?stats=yearByYear&group=pitching"),
+            let (data, _) = try? await Self.session.data(from: url),
+            let response = try? JSONDecoder().decode(YearByYearResponse.self, from: data),
+            let splits = response.stats.first?.splits
+        else { return (0, 0, 0) }
+        var wins = 0, saves = 0, strikeouts = 0
+        for split in splits {
+            guard split.sport?.id == 1, split.team?.id != nil else { continue }
+            guard let year = Int(split.season ?? ""), year < season else { continue }
+            wins += split.stat?.wins ?? 0
+            saves += split.stat?.saves ?? 0
+            strikeouts += split.stat?.strikeOuts ?? 0
+        }
+        return (wins, saves, strikeouts)
+    }
+
+    /// Career hitting totals (hits, stolen bases) accumulated *before* `season`.
+    func careerHittingTotals(playerId: Int, beforeSeason season: Int) async -> (hits: Int, stolenBases: Int) {
+        guard
+            let url = URL(string: "https://statsapi.mlb.com/api/v1/people/\(playerId)/stats?stats=yearByYear&group=hitting"),
+            let (data, _) = try? await Self.session.data(from: url),
+            let response = try? JSONDecoder().decode(YearByYearResponse.self, from: data),
+            let splits = response.stats.first?.splits
+        else { return (0, 0) }
+        var hits = 0, stolenBases = 0
+        for split in splits {
+            guard split.sport?.id == 1, split.team?.id != nil else { continue }
+            guard let year = Int(split.season ?? ""), year < season else { continue }
+            hits += split.stat?.hits ?? 0
+            stolenBases += split.stat?.stolenBases ?? 0
+        }
+        return (hits, stolenBases)
     }
 
     /// Parse the season home-run number from a play description such as
@@ -338,14 +418,20 @@ nonisolated final class MLBStatsService: Sendable {
         let inningsPitched: String?
         let hits: Int?
         let runs: Int?
+        let earnedRuns: Int?
         let baseOnBalls: Int?
         let strikeOuts: Int?
         let hitBatsmen: Int?
+        let homeRuns: Int?
         let numberOfPitches: Int?
         let pitchesThrown: Int?
         let battersFaced: Int?
         let completeGames: Int?
         let shutouts: Int?
+        let saves: Int?
+        let losses: Int?
+        let holds: Int?
+        let blownSaves: Int?
     }
 
     // Year-by-year hitting DTOs (career HR accumulation)
@@ -355,11 +441,21 @@ nonisolated final class MLBStatsService: Sendable {
         let season: String?
         let sport: SportRef?
         let team: TeamRefHR?
-        let stat: HittingStat?
+        let stat: CareerStat?
     }
     private struct SportRef: Decodable { let id: Int? }
     private struct TeamRefHR: Decodable { let id: Int? }
-    private struct HittingStat: Decodable { let homeRuns: Int? }
+    /// Unified career stat covering both hitting and pitching year-by-year rows.
+    /// The same JSON key "stat" carries different fields depending on the group
+    /// parameter (hitting vs pitching), so every field is optional.
+    private struct CareerStat: Decodable {
+        let homeRuns: Int?
+        let hits: Int?
+        let stolenBases: Int?
+        let wins: Int?
+        let saves: Int?
+        let strikeOuts: Int?
+    }
 
     private struct ScheduleResponse: Decodable { let dates: [DateBlock] }
     private struct DateBlock: Decodable { let games: [Game] }

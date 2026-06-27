@@ -703,6 +703,9 @@ final class DiaryStore {
             durationMinutes: 0,
             highlights: [],
             milestones: [],
+            pitching: [],
+            companions: "",
+            memory: "",
             emailSubject: flagged.candidateSource,
             source: flagged.candidateSource,
             status: .upcoming,
@@ -798,6 +801,18 @@ final class DiaryStore {
             guard let index = list.firstIndex(where: { $0.id == id }) else { continue }
             var updated = list
             updated[index] = updated[index].withSeat(section: section, row: row, seat: seat)
+            gamesByInbox[inboxId] = updated
+            save()
+            return
+        }
+    }
+
+    /// Update memory fields (companions and notes) for any game.
+    func setMemory(_ id: UUID, companions: String, memory: String) {
+        for (inboxId, list) in gamesByInbox {
+            guard let index = list.firstIndex(where: { $0.id == id }) else { continue }
+            var updated = list
+            updated[index] = updated[index].withMemory(companions: companions, memory: memory)
             gamesByInbox[inboxId] = updated
             save()
             return
@@ -1113,6 +1128,8 @@ final class DiaryStore {
                             weather: game.weather, firstPitchTempF: game.firstPitchTempF,
                             attendance: game.attendance, durationMinutes: game.durationMinutes,
                             highlights: game.highlights, milestones: game.milestones,
+                            pitching: game.pitching,
+                            companions: game.companions, memory: game.memory,
                             emailSubject: game.emailSubject, source: game.source,
                             status: .completed, isVerified: true
                         )
@@ -1310,7 +1327,14 @@ final class DiaryStore {
         guard
             let data = defaults.data(forKey: storageKey),
             let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
-        else { return }
+        else {
+            // First launch or failed decode — normal for fresh installs.
+            // Data survives app updates because UserDefaults is preserved
+            // across App Store updates. The storageKey must never change.
+            return
+        }
+        // Migrate: ensure older saves that predate hasAcceptedTerms don't lose
+        // onboarding progress just because the field was added later.
         favoriteTeamId = snapshot.favoriteTeamId
         hasPickedFavorite = snapshot.hasPickedFavorite
         hasCompletedOnboarding = snapshot.hasCompletedOnboarding

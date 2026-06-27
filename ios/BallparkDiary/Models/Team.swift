@@ -81,6 +81,9 @@ extension Team {
     static let dodgers    = Team(id: "lad", city: "Los Angeles",  name: "Dodgers",      abbreviation: "LAD", logoMark: "LA",  primaryHex: "#005A9C", secondaryHex: "#EF3E42")
     static let padres     = Team(id: "sd",  city: "San Diego",    name: "Padres",       abbreviation: "SD",  logoMark: "SD",  primaryHex: "#2F241D", secondaryHex: "#FFC425")
     static let giants     = Team(id: "sf",  city: "San Francisco", name: "Giants",      abbreviation: "SF",  logoMark: "SF",  primaryHex: "#FD5A1E", secondaryHex: "#27251F")
+    /// Placeholder team for international games — not an MLB team, but used as a
+    /// sentinel for games played at non-MLB venues (London, Mexico City, Tokyo, etc.).
+    static let international = Team(id: "intl", city: "", name: "International", abbreviation: "INT", logoMark: "🌎", primaryHex: "#1A5276", secondaryHex: "#F5B041")
 
     static let all: [Team] = [
         yankees, redSox, blueJays, orioles, rays,
@@ -88,7 +91,8 @@ extension Team {
         astros, angels, athletics, mariners, rangers,
         braves, marlins, mets, phillies, nationals,
         cubs, reds, brewers, pirates, cardinals,
-        diamondbacks, rockies, dodgers, padres, giants
+        diamondbacks, rockies, dodgers, padres, giants,
+        international
     ]
 
     static func by(id: String) -> Team? { all.first(where: { $0.id == id }) }
@@ -102,7 +106,8 @@ extension Team {
         "kc": 118, "lad": 119, "wsh": 120, "nym": 121, "ath": 133,
         "pit": 134, "sd": 135, "sea": 136, "sf": 137, "stl": 138,
         "tb": 139, "tex": 140, "tor": 141, "min": 142, "phi": 143,
-        "atl": 144, "cws": 145, "mia": 146, "nyy": 147, "mil": 158
+        "atl": 144, "cws": 145, "mia": 146, "nyy": 147, "mil": 158,
+        "intl": 0
     ]
 
     /// The numeric MLB Stats API id for this team.

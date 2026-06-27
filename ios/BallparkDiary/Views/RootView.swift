@@ -35,7 +35,7 @@ struct MainTabsView: View {
                 .tag(Tab.map)
 
             DiaryView()
-                .tabItem { Label("Diary", systemImage: "book.closed.fill") }
+                .tabItem { Label("Diary", systemImage: "building.columns.fill") }
                 .tag(Tab.diary)
 
             StatsView()

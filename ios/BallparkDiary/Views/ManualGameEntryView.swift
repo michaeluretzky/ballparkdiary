@@ -20,7 +20,8 @@ struct ManualGameEntryView: View {
     @State private var row: String = ""
     @State private var seat: String = ""
     @State private var weather: AttendedGame.Weather = .clear
-    @State private var notes: String = ""
+    @State private var companions: String = ""
+    @State private var memory: String = ""
     @FocusState private var focusedField: Field?
 
     // Verification state
@@ -28,7 +29,7 @@ struct ManualGameEntryView: View {
     @State private var verifyMessage: String = ""
     @State private var resolvingUnsure: Bool = false
 
-    enum Field: Hashable { case section, row, seat, notes }
+    enum Field: Hashable { case section, row, seat, companions, memory }
     enum VerifyState {
         case idle
         case verifying
@@ -162,6 +163,15 @@ struct ManualGameEntryView: View {
                                         LabeledInput(label: "Seat", text: $seat)
                                             .focused($focusedField, equals: .seat)
                                     }
+                                }
+                            }
+
+                            FormCard(title: "Memories (optional)") {
+                                VStack(spacing: 8) {
+                                    LabeledInput(label: "Went with", text: $companions)
+                                        .focused($focusedField, equals: .companions)
+                                    LabeledInput(label: "Notes", text: $memory)
+                                        .focused($focusedField, equals: .memory)
                                 }
                             }
                         }
@@ -385,6 +395,9 @@ struct ManualGameEntryView: View {
             durationMinutes: isVerified ? 180 : 180,
             highlights: [],
             milestones: [],
+            pitching: [],
+            companions: companions.trimmingCharacters(in: .whitespaces),
+            memory: memory.trimmingCharacters(in: .whitespaces),
             emailSubject: "Manual entry · \(ballpark.name)",
             source: isVerified ? "Manual entry (verified)" : "Manual entry (unverified)",
             status: status,

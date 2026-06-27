@@ -9,6 +9,7 @@ struct DiaryView: View {
     @State private var showDeleteConfirm = false
     @State private var navigationPath = NavigationPath()
     @State private var yearFilter: Int? = nil
+    @State private var teamFilter: String? = nil
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -27,7 +28,11 @@ struct DiaryView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 4)
 
-                        if !store.upcomingGames.isEmpty && yearFilter == nil {
+                        TeamFilterBar(selectedTeam: $teamFilter, availableTeams: availableTeams)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+
+                        if !store.upcomingGames.isEmpty && yearFilter == nil && teamFilter == nil {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
                                     Circle()
@@ -119,6 +124,7 @@ struct DiaryView: View {
                 Theme.nightVignette.ignoresSafeArea()
             }
             .navigationTitle("Diary")
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
@@ -184,15 +190,34 @@ struct DiaryView: View {
     }
 
     private var filteredGroupedGames: [(String, [AttendedGame])] {
+        var result = groupedGames
         if let year = yearFilter {
-            return groupedGames.filter { $0.0 == "\(year)" }
+            result = result.filter { $0.0 == "\(year)" }
         }
-        return groupedGames
+        if let teamId = teamFilter {
+            result = result.map { group in
+                (group.0, group.1.filter { g in
+                    g.homeTeamId == teamId || g.awayTeamId == teamId
+                })
+            }.filter { !$0.1.isEmpty }
+        }
+        return result
     }
 
     private var availableYears: [Int] {
         let years = Set(store.completedGames.map { Calendar.current.component(.year, from: $0.date) })
         return years.sorted(by: >)
+    }
+
+    private var availableTeams: [(team: Team, count: Int)] {
+        var seen: [String: Int] = [:]
+        for g in store.completedGames {
+            seen[g.homeTeamId, default: 0] += 1
+            seen[g.awayTeamId, default: 0] += 1
+        }
+        return seen.compactMap { id, count in
+            Team.by(id: id).map { ($0, count) }
+        }.sorted { $0.count > $1.count }
     }
 
     /// Navigate to a freshly imported game so the user can verify the data.
@@ -395,7 +420,7 @@ private struct TeamChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            TeamLogoView(team: team, size: 42, showGloss: false)
+            TeamLogoView(team: team, size: 36, showGloss: false)
             Text(team.fullName)
                 .font(.stat(11, weight: .heavy))
                 .foregroundStyle(primary ? .white : .white.opacity(0.65))
@@ -532,6 +557,72 @@ private struct FilterChip: View {
                     Capsule()
                         .strokeBorder(isSelected ? Theme.clay.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
                 )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Team filter
+
+private struct TeamFilterBar: View {
+    @Binding var selectedTeam: String?
+    let availableTeams: [(team: Team, count: Int)]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                TeamFilterChip(abbreviation: "ALL", tint: Theme.cardElevated, isSelected: selectedTeam == nil) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedTeam = nil
+                    }
+                }
+                ForEach(availableTeams, id: \.team.id) { pair in
+                    TeamFilterChip(
+                        abbreviation: pair.team.abbreviation,
+                        tint: pair.team.primary,
+                        isSelected: selectedTeam == pair.team.id,
+                        count: pair.count
+                    ) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTeam = (selectedTeam == pair.team.id) ? nil : pair.team.id
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+}
+
+private struct TeamFilterChip: View {
+    let abbreviation: String
+    let tint: Color
+    let isSelected: Bool
+    var count: Int? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(abbreviation)
+                    .font(.stat(11, weight: isSelected ? .heavy : .semibold))
+                    .foregroundStyle(isSelected ? .white : .white.opacity(0.6))
+                if let count {
+                    Text("\(count)")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule()
+                    .fill(isSelected ? tint : tint.opacity(0.12))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(isSelected ? tint.opacity(0.6) : Color.white.opacity(0.08), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }

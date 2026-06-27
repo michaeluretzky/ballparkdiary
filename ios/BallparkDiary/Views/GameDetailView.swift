@@ -12,6 +12,9 @@ struct GameDetailView: View {
     @State private var showDeleteConfirm: Bool = false
     @State private var showPaywall: Bool = false
     @State private var showEditSheet: Bool = false
+    /// Timer-driven fact rotation for the BallparkPanel.
+    @State private var factTimer: Timer? = nil
+    @State private var factIndex: Int = 0
 
     var body: some View {
         ScrollView {
@@ -23,8 +26,13 @@ struct GameDetailView: View {
                 TicketStubReal(game: game)
                     .padding(.horizontal, 16)
 
-                BallparkPanel(game: game)
+                BallparkPanel(game: game, factIndex: $factIndex)
                     .padding(.horizontal, 16)
+
+                if game.hasMemory {
+                    MemoryPanel(game: game)
+                        .padding(.horizontal, 16)
+                }
 
                 if !game.milestones.isEmpty {
                     if storeKit.isPremium {
@@ -44,6 +52,11 @@ struct GameDetailView: View {
                 if !game.isUpcoming {
                     FactsPanel(game: game)
                         .padding(.horizontal, 16)
+
+                    if !game.pitching.isEmpty {
+                        PitchingPanel(game: game)
+                            .padding(.horizontal, 16)
+                    }
                 }
 
                 SourceRow(game: game)
@@ -116,6 +129,8 @@ struct GameDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .task { renderShareCard() }
+        .onAppear { startFactTimer() }
+        .onDisappear { factTimer?.invalidate() }
     }
 
     @MainActor
@@ -125,6 +140,15 @@ struct GameDetailView: View {
         if let uiImage = renderer.uiImage {
             shareImage = Image(uiImage: uiImage)
             shareImageData = uiImage.pngData()
+        }
+    }
+
+    private func startFactTimer() {
+        factTimer?.invalidate()
+        factTimer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: true) { _ in
+            withAnimation(.easeInOut(duration: 0.4)) {
+                factIndex += 1
+            }
         }
     }
 }
@@ -542,14 +566,17 @@ private struct StubField: View {
 
 private struct BallparkPanel: View {
     let game: AttendedGame
-    @State private var funFactIndex: Int = 0
+    @Binding var factIndex: Int
 
     private var park: Ballpark { game.ballpark }
 
     /// Rotate through the park's discovery facts plus trivia.
-    private var funFacts: [String] {
-        let discoveries = Ballpark.discoveries[park.id] ?? []
-        return [park.trivia] + discoveries
+    /// Shuffled on init so different sessions start on different facts.
+    @State private var shuffledFacts: [String] = []
+
+    private var currentFact: String {
+        guard !shuffledFacts.isEmpty else { return park.trivia }
+        return shuffledFacts[factIndex % shuffledFacts.count]
     }
 
     var body: some View {
@@ -583,36 +610,33 @@ private struct BallparkPanel: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
 
-            // Rotating fun fact
-            Button {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    funFactIndex = (funFactIndex + 1) % funFacts.count
-                }
-            } label: {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Theme.lights)
-                    Text(funFacts[funFactIndex])
-                        .font(.system(size: 13))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineSpacing(2)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer()
-                    Image(systemName: "shuffle")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Theme.textMuted)
-                }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Theme.lights.opacity(0.06))
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
+            // Auto-rotating fun fact — changes every 6 seconds.
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text(currentFact)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineSpacing(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    .id(factIndex) // triggers animation on change
+                Spacer()
             }
-            .buttonStyle(.plain)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Theme.lights.opacity(0.06))
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .animation(.easeInOut(duration: 0.4), value: factIndex)
+            .onAppear {
+                let discoveries = Ballpark.discoveries[park.id] ?? []
+                shuffledFacts = [park.trivia] + discoveries.shuffled()
+            }
 
             // Trivia
             Text(park.trivia)
@@ -832,6 +856,171 @@ private struct Fact: View {
     }
 }
 
+// MARK: - Pitching
+
+private struct PitchingPanel: View {
+    let game: AttendedGame
+
+    private var homePitchers: [PitchingLine] {
+        game.pitching.filter { $0.teamMlbId == game.homeTeam.mlbId }
+    }
+    private var awayPitchers: [PitchingLine] {
+        game.pitching.filter { $0.teamMlbId == game.awayTeam.mlbId }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Pitching")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
+
+            if !awayPitchers.isEmpty {
+                PitchingTeamHeader(team: game.awayTeam, label: "Away")
+                ForEach(orderedPitchers(awayPitchers), id: \.playerMlbId) { line in
+                    PitchingRow(line: line, team: game.awayTeam)
+                }
+            }
+
+            if !homePitchers.isEmpty {
+                PitchingTeamHeader(team: game.homeTeam, label: "Home")
+                ForEach(orderedPitchers(homePitchers), id: \.playerMlbId) { line in
+                    PitchingRow(line: line, team: game.homeTeam)
+                }
+            }
+        }
+        .padding(16)
+        .nightCard()
+    }
+
+    /// Order: starter first (most IP), then by appearance order (assumed from API order),
+    /// closers last (saves > 0). The API returns pitchers in order of appearance already.
+    private func orderedPitchers(_ lines: [PitchingLine]) -> [PitchingLine] {
+        lines.sorted { a, b in
+            // Starters first (by IP, descending)
+            let aIP = parseIP(a.inningsPitched)
+            let bIP = parseIP(b.inningsPitched)
+            if aIP >= 3 || bIP >= 3 {
+                return aIP > bIP
+            }
+            // Within relievers, saves sort to the end
+            if a.saves > 0 && b.saves == 0 { return false }
+            if b.saves > 0 && a.saves == 0 { return true }
+            return true
+        }
+    }
+
+    private func parseIP(_ ip: String) -> Double {
+        let parts = ip.split(separator: ".")
+        guard let whole = Double(parts.first ?? "0") else { return 0 }
+        let frac = parts.count > 1 ? (Double(parts[1]) ?? 0) / 3.0 : 0
+        return whole + frac
+    }
+}
+
+private struct PitchingTeamHeader: View {
+    let team: Team
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ZStack {
+                Circle().fill(team.primary).frame(width: 18, height: 18)
+                TeamLogoView(team: team, size: 14, showGloss: false)
+            }
+            Text(label.uppercased())
+                .font(.caps(9, weight: .heavy))
+                .tracking(1.5)
+                .foregroundStyle(Theme.textMuted)
+            Rectangle()
+                .fill(Theme.textMuted.opacity(0.25))
+                .frame(height: 1)
+        }
+        .padding(.top, 4)
+    }
+}
+
+private struct PitchingRow: View {
+    let line: PitchingLine
+    let team: Team
+
+    private var roleLabel: String? {
+        if line.completeGames >= 1 { return "CG" }
+        if line.saves > 0 { return "SV" }
+        if line.holds > 0 { return "HLD" }
+        if line.isWinner { return "W" }
+        if line.losses > 0 { return "L" }
+        if parseIP(line.inningsPitched) >= 5 { return "SP" }
+        return nil
+    }
+
+    private func parseIP(_ ip: String) -> Double {
+        let parts = ip.split(separator: ".")
+        guard let whole = Double(parts.first ?? "0") else { return 0 }
+        let frac = parts.count > 1 ? (Double(parts[1]) ?? 0) / 3.0 : 0
+        return whole + frac
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // Role badge
+            if let role = roleLabel {
+                Text(role)
+                    .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(team.primary)
+                    .frame(width: 28, height: 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(team.primary.opacity(0.15))
+                    )
+            } else {
+                Color.clear.frame(width: 28, height: 18)
+            }
+
+            Spacer().frame(width: 8)
+
+            // Name
+            Text(line.name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer().frame(width: 6)
+
+            // IP
+            PitchingStatCell(label: "IP", value: line.inningsPitched)
+            PitchingStatCell(label: "H", value: "\(line.hits)")
+            PitchingStatCell(label: "R", value: "\(line.runs)")
+            PitchingStatCell(label: "ER", value: "\(line.earnedRuns)")
+            PitchingStatCell(label: "BB", value: "\(line.walks)")
+            PitchingStatCell(label: "K", value: "\(line.strikeOuts)")
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Theme.cardElevated.opacity(0.5))
+        )
+    }
+}
+
+private struct PitchingStatCell: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.stat(11, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+            Text(label)
+                .font(.system(size: 7, weight: .semibold))
+                .foregroundStyle(Theme.textMuted)
+        }
+        .frame(width: 28)
+    }
+}
+
 // MARK: - Locked milestones (pro gate)
 
 private struct LockedMilestonesPanel: View {
@@ -933,9 +1122,11 @@ private struct EditGameSheet: View {
     @State private var seat: String
     @State private var rootedForHome: Bool?
     @State private var rootedForNeither: Bool
+    @State private var companions: String
+    @State private var memory: String
     @FocusState private var focusedField: Field?
 
-    enum Field: Hashable { case sec, rw, st }
+    enum Field: Hashable { case sec, rw, st, comp, mem }
 
     init(game: AttendedGame) {
         self.game = game
@@ -944,6 +1135,8 @@ private struct EditGameSheet: View {
         _seat = State(initialValue: game.seat == "—" ? "" : game.seat)
         _rootedForHome = State(initialValue: game.userRootedForHome)
         _rootedForNeither = State(initialValue: game.userRootedForHome == nil)
+        _companions = State(initialValue: game.companions)
+        _memory = State(initialValue: game.memory)
     }
 
     var body: some View {
@@ -1033,6 +1226,21 @@ private struct EditGameSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .nightCard()
 
+                        // Memory section
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("MEMORIES".uppercased())
+                                .font(.caps(10, weight: .heavy))
+                                .tracking(2.2)
+                                .foregroundStyle(Theme.clay)
+                            LabeledInput(label: "Went with", text: $companions)
+                                .focused($focusedField, equals: .comp)
+                            LabeledInput(label: "Notes", text: $memory)
+                                .focused($focusedField, equals: .mem)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .nightCard()
+
                         Color.clear.frame(height: 20)
                     }
                     .padding(.horizontal, 16)
@@ -1057,6 +1265,7 @@ private struct EditGameSheet: View {
                         if newRoot != game.userRootedForHome {
                             store.setRootedForHome(game.id, rootedForHome: newRoot)
                         }
+                        store.setMemory(game.id, companions: companions.trimmingCharacters(in: .whitespaces), memory: memory.trimmingCharacters(in: .whitespaces))
                         dismiss()
                     }
                     .fontWeight(.heavy)
@@ -1071,5 +1280,63 @@ private struct EditGameSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Memory panel
+
+private struct MemoryPanel: View {
+    let game: AttendedGame
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "heart.text.square.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.clay)
+                Text("Memories")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            if !game.companions.trimmingCharacters(in: .whitespaces).isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.lights)
+                    Text("Went with")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                    Text(game.companions.trimmingCharacters(in: .whitespaces))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary)
+                    Spacer()
+                }
+            }
+
+            if !game.memory.trimmingCharacters(in: .whitespaces).isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !game.companions.trimmingCharacters(in: .whitespaces).isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "note.text")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.lights)
+                            Text("Notes")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.textMuted)
+                            Spacer()
+                        }
+                    }
+                    Text(game.memory.trimmingCharacters(in: .whitespaces))
+                        .font(.system(size: 14, weight: .regular, design: .serif))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineSpacing(4)
+                        .italic()
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(16)
+        .nightCard()
     }
 }

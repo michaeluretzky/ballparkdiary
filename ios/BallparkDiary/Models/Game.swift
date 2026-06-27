@@ -24,6 +24,11 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     let durationMinutes: Int
     let highlights: [Highlight]
     let milestones: [PlayerMilestone]
+    let pitching: [PitchingLine]
+    /// Who the user went to the game with (e.g. "Dad", "Sarah and Mike").
+    let companions: String
+    /// Free-form notes about the day — memories, moments, anything worth keeping.
+    let memory: String
     let emailSubject: String   // surfaced during import (shared ticket / manual note)
     let source: String         // ticketing platform / receipt source
     /// Whether the game has been played (real final score) or is still upcoming
@@ -68,6 +73,16 @@ struct AttendedGame: Identifiable, Hashable, Codable {
         [section, row, seat].contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty && $0 != "—" }
     }
 
+    /// Whether the user has added personal memories to this game.
+    var hasMemory: Bool {
+        !companions.trimmingCharacters(in: .whitespaces).isEmpty
+        || !memory.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// True once verified box-score facts have been merged in. Used to decide
+    /// whether a pull-to-refresh should re-fetch a game's details.
+    var isEnriched: Bool { durationMinutes > 0 || !highlights.isEmpty || !milestones.isEmpty }
+
     /// Return a copy with updated seat information.
     func withSeat(section: String, row: String, seat: String) -> AttendedGame {
         AttendedGame(
@@ -78,7 +93,25 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             section: section, row: row, seat: seat, confirmation: confirmation,
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
-            highlights: highlights, milestones: milestones,
+            highlights: highlights, milestones: milestones, pitching: pitching,
+            companions: companions, memory: memory,
+            emailSubject: emailSubject, source: source, status: status,
+            isVerified: isVerified
+        )
+    }
+
+    /// Return a copy with updated memory fields.
+    func withMemory(companions: String, memory: String) -> AttendedGame {
+        AttendedGame(
+            id: id, date: date, ballparkId: ballparkId,
+            homeTeamId: homeTeamId, awayTeamId: awayTeamId,
+            homeScore: homeScore, awayScore: awayScore,
+            userRootedForHome: userRootedForHome,
+            section: section, row: row, seat: seat, confirmation: confirmation,
+            weather: weather, firstPitchTempF: firstPitchTempF,
+            attendance: attendance, durationMinutes: durationMinutes,
+            highlights: highlights, milestones: milestones, pitching: pitching,
+            companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: status,
             isVerified: isVerified
         )
@@ -95,7 +128,8 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             section: section, row: row, seat: seat, confirmation: confirmation,
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
-            highlights: highlights, milestones: milestones,
+            highlights: highlights, milestones: milestones, pitching: pitching,
+            companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: status,
             isVerified: isVerified
         )
@@ -111,15 +145,12 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             section: section, row: row, seat: seat, confirmation: confirmation,
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
-            highlights: highlights, milestones: milestones,
+            highlights: highlights, milestones: milestones, pitching: pitching,
+            companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: .completed,
             isVerified: true
         )
     }
-
-    /// True once verified box-score facts have been merged in. Used to decide
-    /// whether a pull-to-refresh should re-fetch a game's details.
-    var isEnriched: Bool { durationMinutes > 0 || !highlights.isEmpty || !milestones.isEmpty }
 
     /// Merge verified facts, scoring-play highlights and detected milestones from
     /// the MLB live feed into this game. Only applies to finished games.
@@ -142,6 +173,8 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             durationMinutes: details.durationMinutes > 0 ? details.durationMinutes : durationMinutes,
             highlights: AttendedGame.highlights(from: details),
             milestones: AttendedGame.milestones(from: details),
+            pitching: details.pitching,
+            companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: .completed,
             isVerified: true
         )
@@ -247,9 +280,20 @@ struct PlayerMilestone: Identifiable, Hashable, Codable {
 // MARK: - Deriving highlights & milestones from the live feed
 
 extension AttendedGame {
-    /// Famous career home-run totals worth flagging — round centuries plus the
-    /// historic marks fans chase (660 Mays, 700, 714 Ruth, 755 Aaron, 762 Bonds).
-    private static let famousHomeRunMarks: [Int] = [500, 600, 660, 700, 714, 755, 762, 800]
+    /// Career home-run totals worth flagging — every century mark plus historic
+    /// milestones (660 Mays, 700, 714 Ruth, 755 Aaron, 762 Bonds). Lower
+    /// thresholds catch early-career and mid-career achievements too.
+    private static let famousHomeRunMarks: [Int] = [
+        100, 200, 300, 400, 500, 600, 660, 700, 714, 755, 762, 800
+    ]
+    /// Career hits milestones worth flagging.
+    private static let famousHitMarks: [Int] = [2000, 3000, 4000]
+    /// Career wins milestones for pitchers.
+    private static let famousWinMarks: [Int] = [100, 200, 300, 400]
+    /// Career saves milestones for closers.
+    private static let famousSaveMarks: [Int] = [200, 300, 400, 500, 600]
+    /// Career strikeout milestones.
+    private static let famousStrikeoutMarks: [Int] = [2000, 3000, 4000, 5000]
 
     static func weather(condition: String, dayNight: String, roof: Ballpark.RoofType) -> Weather? {
         if roof == .dome { return .dome }
@@ -295,7 +339,7 @@ extension AttendedGame {
             let inning = inningLabel(half: hr.halfInning, inning: hr.inning)
             let grandSlamNote = hr.rbi >= 4 ? " (grand slam)" : ""
 
-            if total % 100 == 0 || famousHomeRunMarks.contains(total) {
+            if famousHomeRunMarks.contains(total) {
                 result.append(PlayerMilestone(
                     id: UUID(), playerName: hr.batter, teamId: teamId,
                     title: "\(ordinal(total)) Career Home Run",
@@ -311,18 +355,20 @@ extension AttendedGame {
                     title: "Career HR #\(total) — Chasing \(mark)",
                     category: .homeRun, stat: "HR #\(total)",
                     detail: hr.description + grandSlamNote,
-                    context: "\(hr.batter)'s \(ordinal(total)) career home run — now just \(away) away from the historic \(mark) club. You saw the chase live.",
+                    context: "\(hr.batter)'s \(ordinal(total)) career home run — now just \(away) away from \(mark). You saw the chase live.",
                     inning: inning
                 ))
             }
         }
 
-        // Pitching gems from complete games and high-strikeout outings.
+        // Pitching gems from complete games, high-strikeout outings,
+        // and career milestones (wins, saves, strikeouts).
         for line in details.pitching {
             let teamId = Team.by(mlbId: line.teamMlbId)?.id ?? ""
             let isCompleteGame = line.completeGames >= 1
             let isShutout = line.shutouts >= 1 || (isCompleteGame && line.runs == 0)
 
+            // Game-level pitching achievements
             if isCompleteGame {
                 let noHitter = line.hits == 0
                 let perfect = noHitter && line.walks == 0 && line.hitBatsmen == 0
@@ -366,6 +412,77 @@ extension AttendedGame {
                         : "\(line.strikeOuts) strikeouts in one game is a night to remember.",
                     inning: nil
                 ))
+            }
+
+            // Career pitching milestones (wins, saves, strikeouts)
+            if let careerW = line.careerWins, careerW > 0 {
+                if famousWinMarks.contains(careerW) {
+                    result.append(PlayerMilestone(
+                        id: UUID(), playerName: line.name, teamId: teamId,
+                        title: "\(ordinal(careerW)) Career Win",
+                        category: .wins,
+                        stat: "Win #\(careerW)",
+                        detail: "\(line.name) earned \(ordinal(careerW)) career win — \(line.inningsPitched) IP, \(line.hits) H, \(line.earnedRuns) ER.",
+                        context: "Only a handful of pitchers reach \(careerW) wins. You saw history on the mound.",
+                        inning: nil
+                    ))
+                } else if let mark = famousWinMarks.first(where: { $0 > careerW && $0 - careerW <= 5 }) {
+                    result.append(PlayerMilestone(
+                        id: UUID(), playerName: line.name, teamId: teamId,
+                        title: "Career Win #\(careerW) — \(mark - careerW) to \(mark)",
+                        category: .wins,
+                        stat: "Win #\(careerW)",
+                        detail: "\(line.name) is closing in on \(mark) career wins.",
+                        context: "\(line.name) now has \(careerW) wins. You saw the journey.",
+                        inning: nil
+                    ))
+                }
+            }
+            if let careerSv = line.careerSaves, careerSv > 0 {
+                if famousSaveMarks.contains(careerSv) {
+                    result.append(PlayerMilestone(
+                        id: UUID(), playerName: line.name, teamId: teamId,
+                        title: "\(ordinal(careerSv)) Career Save",
+                        category: .milestone,
+                        stat: "Save #\(careerSv)",
+                        detail: "\(line.name) notched \(ordinal(careerSv)) career save.",
+                        context: "The save became an official stat in 1969. Only a select group reaches \(careerSv).",
+                        inning: nil
+                    ))
+                } else if let mark = famousSaveMarks.first(where: { $0 > careerSv && $0 - careerSv <= 5 }) {
+                    result.append(PlayerMilestone(
+                        id: UUID(), playerName: line.name, teamId: teamId,
+                        title: "Save #\(careerSv) — \(mark - careerSv) to \(mark)",
+                        category: .milestone,
+                        stat: "Save #\(careerSv)",
+                        detail: "\(line.name) is \(mark - careerSv) saves from the \(mark)-save club.",
+                        context: "\(line.name) is chasing the elite \(mark)-save milestone.",
+                        inning: nil
+                    ))
+                }
+            }
+            if let careerK = line.careerStrikeouts, careerK > 0 {
+                if famousStrikeoutMarks.contains(careerK) {
+                    result.append(PlayerMilestone(
+                        id: UUID(), playerName: line.name, teamId: teamId,
+                        title: "\(ordinal(careerK)) Career Strikeout",
+                        category: .strikeouts,
+                        stat: "K #\(careerK)",
+                        detail: "\(line.name) recorded \(ordinal(careerK)) career strikeout.",
+                        context: "\(careerK)+ strikeouts puts \(line.name) among the game's all-time greats.",
+                        inning: nil
+                    ))
+                } else if let mark = famousStrikeoutMarks.first(where: { $0 > careerK && $0 - careerK <= 10 }) {
+                    result.append(PlayerMilestone(
+                        id: UUID(), playerName: line.name, teamId: teamId,
+                        title: "Strikeout #\(careerK) — \(mark - careerK) to \(mark)",
+                        category: .strikeouts,
+                        stat: "K #\(careerK)",
+                        detail: "\(line.name) is \(mark - careerK) Ks from \(mark) career strikeouts.",
+                        context: "\(line.name) is on the doorstep of the \(mark)-K club.",
+                        inning: nil
+                    ))
+                }
             }
         }
 
@@ -443,6 +560,9 @@ extension AttendedGame {
             durationMinutes: 0,
             highlights: [],
             milestones: [],
+            pitching: [],
+            companions: "",
+            memory: "",
             emailSubject: emailSubject,
             source: source,
             status: isFinal ? .completed : .upcoming,
