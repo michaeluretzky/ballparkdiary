@@ -503,6 +503,67 @@ extension AttendedGame {
 // MARK: - Building attended games from real data
 
 extension AttendedGame {
+    /// Build an attended game from a confirmed MLB Stats API result with an
+    /// explicitly known ballpark — used by the photo locator, where GPS pins
+    /// the exact stadium (including neutral / international venues that aren't a
+    /// home team's regular park, e.g. London Stadium or Tokyo Dome).
+    static func from(
+        result: MLBGameResult,
+        ballpark: Ballpark,
+        source: String,
+        emailSubject: String,
+        favoriteTeamId: String?
+    ) -> AttendedGame? {
+        guard
+            let homeTeam = Team.by(mlbId: result.homeMlbId),
+            let awayTeam = Team.by(mlbId: result.awayMlbId)
+        else { return nil }
+
+        let rootedForHome: Bool?
+        if favoriteTeamId == homeTeam.id {
+            rootedForHome = true
+        } else if favoriteTeamId == awayTeam.id {
+            rootedForHome = false
+        } else {
+            rootedForHome = nil
+        }
+
+        let weather: Weather = {
+            switch ballpark.roof {
+            case .dome: return .dome
+            case .retractable, .open:
+                return result.dayNight.lowercased() == "day" ? .clear : .night
+            }
+        }()
+
+        let isFinal = result.isFinal
+        return AttendedGame(
+            id: UUID(),
+            date: result.date,
+            ballparkId: ballpark.id,
+            homeTeamId: homeTeam.id,
+            awayTeamId: awayTeam.id,
+            homeScore: isFinal ? result.homeScore : 0,
+            awayScore: isFinal ? result.awayScore : 0,
+            userRootedForHome: rootedForHome,
+            section: "", row: "", seat: "",
+            confirmation: nil,
+            weather: weather,
+            firstPitchTempF: 0,
+            attendance: 0,
+            durationMinutes: 0,
+            highlights: [],
+            milestones: [],
+            pitching: [],
+            companions: "",
+            memory: "",
+            emailSubject: emailSubject,
+            source: source,
+            status: isFinal ? .completed : .upcoming,
+            isVerified: true
+        )
+    }
+
     /// Build an attended game from a confirmed MLB Stats API result plus the
     /// originating ticket email. Score, teams, venue and date are real; seat
     /// details and rooting interest are best-effort from the user's profile.

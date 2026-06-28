@@ -8,6 +8,7 @@ struct InboxesView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(StoreViewModel.self) private var storeKit
     @State private var showManualSheet: Bool = false
+    @State private var showPhotoSheet: Bool = false
     @State private var showPaywall: Bool = false
 
     var body: some View {
@@ -20,6 +21,8 @@ struct InboxesView: View {
                         CombinedSummary()
 
                         ShareImportCard()
+
+                        PhotoMatchCard { showPhotoSheet = true }
 
                         if !store.flaggedDuplicates.isEmpty {
                             FlaggedDuplicatesSection()
@@ -70,6 +73,9 @@ struct InboxesView: View {
             .refreshable { await store.refresh(force: true) }
             .sheet(isPresented: $showManualSheet) {
                 ManualGameEntryView()
+            }
+            .sheet(isPresented: $showPhotoSheet) {
+                PhotoImportView()
             }
             .sheet(isPresented: $showPaywall) {
                 PaywallView(store: storeKit)
@@ -217,6 +223,50 @@ private struct ShareImportCard: View {
         }
         .padding(16)
         .nightCard()
+    }
+}
+
+// MARK: - Photo match card
+
+/// Entry point for the free "add a game from a photo" flow. The photo's GPS
+/// pins the stadium and its date matches the real MLB box score.
+private struct PhotoMatchCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "photo.badge.magnifyingglass")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Theme.lights.opacity(0.16)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Find a game from a photo")
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Pick a stadium photo — we read its location & date")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Theme.lights.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Theme.lights.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

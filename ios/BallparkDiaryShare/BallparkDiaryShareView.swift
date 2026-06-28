@@ -6,6 +6,9 @@ import SwiftUI
 /// via a custom URL scheme and imports the ticket automatically.
 struct ShareView: View {
     let extensionContext: NSExtensionContext?
+    /// Launches the main app via the responder-chain workaround owned by the
+    /// hosting `ShareViewController` (NSExtensionContext.open is unreliable here).
+    var openHostApp: () -> Void = {}
 
     @State private var phase: Phase = .working
     @State private var savedCount: Int = 0
@@ -294,30 +297,11 @@ struct ShareView: View {
         return "\(unique.first!) vs \(unique.last!)"
     }
 
-    /// Opens the main Ballpark Diary app via its custom URL scheme.
-    /// Dismisses the extension afterward so the user lands in the main app.
+    /// Opens the main Ballpark Diary app via its custom URL scheme. The actual
+    /// launch is performed by the hosting `ShareViewController` using the
+    /// responder chain, which is the only reliable path from a Share Extension.
     private func openApp() {
-        guard let context = extensionContext else {
-            return
-        }
-        guard let url = URL(string: "ballparkdiary://import") else {
-            context.completeRequest(returningItems: nil)
-            return
-        }
-        // Safety timeout: if open(_:completionHandler:) never calls its handler
-        // (a known iOS quirk), dismiss the extension ourselves after 2 seconds.
-        let workItem = DispatchWorkItem { [weak extensionContext] in
-            extensionContext?.completeRequest(returningItems: nil)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: workItem)
-        context.open(url) { [weak extensionContext] opened in
-            workItem.cancel()
-            if !opened {
-                // If the system refused to open the URL (e.g. scheme not registered),
-                // still clean up so the user isn't stuck.
-            }
-            extensionContext?.completeRequest(returningItems: nil)
-        }
+        openHostApp()
     }
 
     private func close() {
