@@ -458,6 +458,7 @@ final class DiaryStore {
 
     var didBackToBack: Bool {
         let sorted = completedGames.map(\.date).sorted()
+        guard sorted.count >= 2 else { return false }
         for i in 1..<sorted.count {
             let diff = Calendar.current.dateComponents([.day], from: sorted[i-1], to: sorted[i]).day ?? 99
             if diff == 1 { return true }

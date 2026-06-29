@@ -277,7 +277,7 @@ private struct RecordCard: View {
 
             GeometryReader { geo in
                 let totalWidth = geo.size.width
-                let winRatio = store.games.isEmpty ? 0 : Double(store.winCount) / Double(store.games.count)
+                let winRatio = store.completedGames.isEmpty ? 0 : Double(store.winCount) / Double(store.completedGames.count)
                 let winWidth = totalWidth * (animateBar ? winRatio : 0)
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.foul.opacity(0.85))

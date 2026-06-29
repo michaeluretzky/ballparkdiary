@@ -31,6 +31,13 @@ struct DiaryView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 40)
                     } else {
+                        Text("Diary")
+                            .font(.system(size: 34, weight: .black))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+
                         DiaryHeader()
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
@@ -137,7 +144,7 @@ struct DiaryView: View {
             }
             .navigationTitle("Diary")
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
             .toolbar {

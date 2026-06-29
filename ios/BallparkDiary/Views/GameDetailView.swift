@@ -901,7 +901,7 @@ private struct PitchingPanel: View {
             // Within relievers, saves sort to the end
             if a.saves > 0 && b.saves == 0 { return false }
             if b.saves > 0 && a.saves == 0 { return true }
-            return true
+            return false
         }
     }
 
