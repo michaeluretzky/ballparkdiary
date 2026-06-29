@@ -24,8 +24,6 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan a paper ticket stub or snap a photo of the ballpark to add it as a memory to your baseball diary.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Pick a photo you took at the ballpark and Ballpark Diary reads its location and date to find the game you attended. Your photos stay on your device.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>CFBundleURLTypes</key>
