@@ -4,17 +4,18 @@ import RevenueCat
 /// Ballpark Diary Pro paywall. Stadium-night styling matching the rest of the
 /// app, a list of Pro perks, the lifetime package from RevenueCat's current
 /// offering, and a required Restore Purchases action.
+/// Copy is written in a plain, fan-first voice.
 struct PaywallView: View {
     var store: StoreViewModel
     @Environment(\.dismiss) private var dismiss
 
     private let perks: [Perk] = [
-        Perk(symbol: "tray.full.fill", title: "Unlimited inboxes", detail: "Gmail, iCloud, Outlook & more — all merged"),
-        Perk(symbol: "sparkles", title: "Ballpark Wrapped", detail: "Your cinematic season recap, every year"),
-        Perk(symbol: "square.and.arrow.up.fill", title: "Shareable game cards", detail: "Export polished cards of any game"),
-        Perk(symbol: "map.fill", title: "Ballpark quest & travel map", detail: "Track all 30 parks + miles traveled"),
-        Perk(symbol: "camera.fill", title: "Camera ticket scanning", detail: "Snap paper stubs & add photo memories"),
-        Perk(symbol: "chart.bar.xaxis", title: "Deep box-score data", detail: "Player milestones & notable plays")
+        Perk(symbol: "tray.full.fill", title: "Unlimited inboxes", detail: "Pull tickets from Gmail, iCloud, Outlook and more"),
+        Perk(symbol: "sparkles", title: "Ballpark Wrapped", detail: "A season recap worth sharing, every year"),
+        Perk(symbol: "square.and.arrow.up.fill", title: "Shareable game cards", detail: "Turn any game into a card to post or send"),
+        Perk(symbol: "map.fill", title: "Ballpark quest & travel map", detail: "See all 30 parks and the miles you've logged"),
+        Perk(symbol: "camera.fill", title: "Camera ticket scanning", detail: "Snap a paper stub and save the memory"),
+        Perk(symbol: "chart.bar.xaxis", title: "Deep box-score data", detail: "Player milestones and the plays worth remembering")
     ]
 
     var body: some View {
@@ -81,7 +82,7 @@ struct PaywallView: View {
                 .font(.scoreboard(40, weight: .black))
                 .foregroundStyle(Theme.textPrimary)
 
-            Text("Every game, every park, every season — captured forever.")
+            Text("Keep a record of every game you've ever been to.")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.center)
@@ -132,9 +133,9 @@ struct PaywallView: View {
                     Task { await store.purchase(package: pkg) }
                 } label: {
                     VStack(spacing: 4) {
-                        Text("Unlock Pro — One-Time Purchase")
+                        Text("Unlock Pro")
                             .font(.system(size: 17, weight: .heavy))
-                        Text("\(pkg.storeProduct.localizedPriceString) · lifetime access")
+                        Text("\(pkg.storeProduct.localizedPriceString) · yours for good")
                             .font(.system(size: 12, weight: .medium))
                             .opacity(0.9)
                     }
@@ -166,14 +167,14 @@ struct PaywallView: View {
             ContentUnavailableView {
                 Label("Pricing unavailable", systemImage: "wifi.exclamationmark")
             } description: {
-                Text("Couldn't reach the store. Pull down or try again shortly.")
+                Text("We couldn't reach the store. Give it another try in a moment.")
             }
             .foregroundStyle(Theme.textSecondary)
         }
     }
 
     private var legalFooter: some View {
-        Text("One-time purchase. Not a subscription — pay once, keep forever. Restore on any device signed into your Apple ID.")
+        Text("Pay once and it's yours. No subscription, no renewals. Restore it on any device signed into your Apple ID.")
             .font(.system(size: 10))
             .foregroundStyle(Theme.textMuted)
             .multilineTextAlignment(.center)

@@ -51,7 +51,7 @@ private struct FavoriteTeamPanel: View {
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Theme.textPrimary)
 
-                Text("We'll center your map here and tint your stats in their colors.")
+                Text("Your map starts here, and your stats wear their colors.")
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
@@ -187,7 +187,7 @@ private struct HeroPanel: View {
                         .foregroundStyle(Theme.textPrimary)
                         .lineSpacing(2)
 
-                    Text("Every game you add is confirmed against the real box score, plotted on your ballpark map, and folded into your stats.")
+                    Text("Add a game and we match it to the real box score, drop it on your map, and keep your stats up to date.")
                         .font(.system(size: 15))
                         .foregroundStyle(Theme.textSecondary)
                         .multilineTextAlignment(.center)
@@ -208,7 +208,7 @@ private struct HeroPanel: View {
                     OnboardStep(number: "2", icon: "square.and.arrow.up",
                                 text: "Tap Share, then pick Ballpark Diary from the share sheet.")
                     OnboardStep(number: "3", icon: "checkmark.seal.fill",
-                                text: "We read it on-device and confirm the matchup automatically.")
+                                text: "We read it right on your phone and fill in the matchup for you.")
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,7 +226,7 @@ private struct HeroPanel: View {
                             Text("Add a game by hand")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(Theme.textPrimary)
-                            Text("For older games or paper stubs")
+                            Text("Great for older games and paper stubs")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Theme.textMuted)
                         }
@@ -269,7 +269,7 @@ private struct HeroPanel: View {
                 .padding(.horizontal, 22)
                 .padding(.top, 12)
 
-                Text("Works with any ticketing platform — StubHub, SeatGeek, Ticketmaster, Vivid Seats, Gametime, AXS, MLB Ballpark, and team apps.")
+                Text("Works with any ticketing app: StubHub, SeatGeek, Ticketmaster, Vivid Seats, Gametime, AXS, MLB Ballpark and team apps.")
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.textMuted)
                     .multilineTextAlignment(.center)
@@ -329,7 +329,7 @@ private struct OnboardStep: View {
 struct LegalDisclaimer: View {
     var body: some View {
         VStack(spacing: 6) {
-            Text("Tickets you share are read entirely on your device — never uploaded, stored on our servers, or shared. No email or account access is ever requested.")
+            Text("Tickets you share are read right on your device. Nothing is uploaded, stored on our servers, or shared, and we never ask for your email or account.")
                 .font(.system(size: 10.5))
                 .foregroundStyle(Theme.textMuted)
                 .multilineTextAlignment(.center)

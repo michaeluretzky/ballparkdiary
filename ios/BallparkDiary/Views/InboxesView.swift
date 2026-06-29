@@ -51,7 +51,7 @@ struct InboxesView: View {
                             showManualSheet = true
                         }
 
-                        Text("Every game — shared or added by hand — is combined into one diary. Your games, ballparks, runs and W-L always reflect the total.")
+                        Text("Whether you share a ticket or add it by hand, every game lands in one diary. Your games, ballparks, runs and W-L always add up to the whole picture.")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.textMuted)
                             .multilineTextAlignment(.center)
@@ -211,7 +211,7 @@ private struct ShareImportCard: View {
                     .fill(Theme.cardElevated)
             )
 
-            Text("Nothing leaves your phone — no email login, no accounts. Pull down to refresh after sharing.")
+            Text("Nothing leaves your phone. No email login, no accounts. Pull down to refresh after sharing.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textMuted)
         }

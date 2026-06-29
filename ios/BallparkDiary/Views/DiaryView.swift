@@ -482,7 +482,7 @@ private struct EmptyDiaryView: View {
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
 
-            Text("Share a ticket screenshot or add a game by hand to begin building your ballpark history.")
+            Text("Share a ticket screenshot, or add a game by hand, and your ballpark history starts here.")
                 .font(.system(size: 15))
                 .foregroundStyle(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -498,7 +498,7 @@ private struct EmptyDiaryView: View {
                 EmptyTip(
                     icon: "square.and.pencil",
                     color: store.favoriteTeam.primary,
-                    text: "Or tap 'Add a Game' in Sources for older stubs."
+                    text: "Or tap 'Add a Game' in Sources to log an older stub."
                 )
             }
             .padding(.top, 6)
