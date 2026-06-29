@@ -961,28 +961,94 @@ private struct AchievementDetailSheet: View {
     let achievement: Achievement
     let store: DiaryStore
 
-    /// Games that contributed to unlocking this achievement.
+    /// Games that contributed to unlocking this achievement — only the games
+    /// that actually satisfy this specific badge's requirement, not the whole
+    /// diary. Collection/division badges show one game per unique qualifying
+    /// park; lifetime-total badges legitimately list every game.
     private var contributingGames: [AttendedGame] {
-        store.completedGames.filter { g in achievement(game: g) }
-    }
-
-    /// Check whether a specific game contributed to this achievement.
-    private func achievement(game g: AttendedGame) -> Bool {
+        let games = store.completedGames.sorted { $0.date < $1.date }
         switch achievement.id {
         // ── Collection ──
-        case "first":         return true // all games contribute
-        case "five_parks":    return store.ballparkCount >= 5 && store.visitedBallparkIds.contains(g.ballparkId)
-        case "ten_parks":     return store.ballparkCount >= 10 && store.visitedBallparkIds.contains(g.ballparkId)
-        case "twenty_parks":  return store.ballparkCount >= 20 && store.visitedBallparkIds.contains(g.ballparkId)
-        case "thirty_parks":  return store.ballparkCount == 30 && store.visitedBallparkIds.contains(g.ballparkId)
-        case "coast":         return true // coast to coast
+        case "first":
+            return Array(games.prefix(1))
+        case "five_parks", "ten_parks", "twenty_parks", "thirty_parks":
+            return uniqueParkGames(games)
+        case "coast":
+            let east: Set<String> = ["yankee-stadium", "fenway-park", "citi-field", "citizens-bank-park"]
+            let west: Set<String> = ["dodger-stadium", "oracle-park", "petco-park", "angel-stadium"]
+            return uniqueParkGames(games.filter { east.contains($0.ballparkId) || west.contains($0.ballparkId) })
         // ── Division ──
-        case "div_ale":       return DiaryStore.alEast.teamIds.contains(g.homeTeamId) || DiaryStore.alEast.teamIds.contains(g.awayTeamId)
-        case "div_alc":       return DiaryStore.alCentral.teamIds.contains(g.homeTeamId) || DiaryStore.alCentral.teamIds.contains(g.awayTeamId)
-        case "div_alw":       return DiaryStore.alWest.teamIds.contains(g.homeTeamId) || DiaryStore.alWest.teamIds.contains(g.awayTeamId)
-        case "div_nle":       return DiaryStore.nlEast.teamIds.contains(g.homeTeamId) || DiaryStore.nlEast.teamIds.contains(g.awayTeamId)
-        case "div_nlc":       return DiaryStore.nlCentral.teamIds.contains(g.homeTeamId) || DiaryStore.nlCentral.teamIds.contains(g.awayTeamId)
-        case "div_nlw":       return DiaryStore.nlWest.teamIds.contains(g.homeTeamId) || DiaryStore.nlWest.teamIds.contains(g.awayTeamId)
+        case "div_ale": return uniqueParkGames(games.filter { divisionParkIds(DiaryStore.alEast).contains($0.ballparkId) })
+        case "div_alc": return uniqueParkGames(games.filter { divisionParkIds(DiaryStore.alCentral).contains($0.ballparkId) })
+        case "div_alw": return uniqueParkGames(games.filter { divisionParkIds(DiaryStore.alWest).contains($0.ballparkId) })
+        case "div_nle": return uniqueParkGames(games.filter { divisionParkIds(DiaryStore.nlEast).contains($0.ballparkId) })
+        case "div_nlc": return uniqueParkGames(games.filter { divisionParkIds(DiaryStore.nlCentral).contains($0.ballparkId) })
+        case "div_nlw": return uniqueParkGames(games.filter { divisionParkIds(DiaryStore.nlWest).contains($0.ballparkId) })
+        case "league": return uniqueParkGames(games)
+        // ── Fan dedication (lifetime totals — every game truly counts) ──
+        case "iron_fan", "silver_slugger", "century":
+            return games
+        case "die_hard":
+            let groups = Dictionary(grouping: games) { Calendar.current.component(.year, from: $0.date) }
+            if let season = groups.first(where: { $0.value.count >= 10 }) {
+                return season.value.sorted { $0.date < $1.date }
+            }
+            return []
+        case "back_to_back":
+            return backToBackGames(games)
+        case "streak", "streak5":
+            return games.filter { qualifies(game: $0) }
+        // ── Road / rivalry ──
+        case "road_warrior":
+            let fav = store.favoriteTeam
+            return games.filter {
+                ($0.homeTeamId == fav.id && $0.userRootedForHome == false)
+                    || ($0.awayTeamId == fav.id && $0.userRootedForHome == true)
+            }
+        case "international":
+            return games.filter { $0.ballparkId == "rogers-centre" }
+        case "dome_dweller":
+            return uniqueParkGames(games.filter { $0.ballpark.roof != .open })
+        default:
+            return games.filter { qualifies(game: $0) }
+        }
+    }
+
+    /// First game at each unique ballpark, in chronological order. Used so
+    /// collection badges list one representative game per park, not duplicates.
+    private func uniqueParkGames(_ games: [AttendedGame]) -> [AttendedGame] {
+        var seen = Set<String>()
+        var result: [AttendedGame] = []
+        for g in games where !seen.contains(g.ballparkId) {
+            seen.insert(g.ballparkId)
+            result.append(g)
+        }
+        return result
+    }
+
+    /// Home-park ids for a division — what a division-collection badge needs.
+    private func divisionParkIds(_ div: DiaryStore.MLBDivision) -> Set<String> {
+        Set(div.teamIds.compactMap { Ballpark.by(teamId: $0)?.id })
+    }
+
+    /// Pairs of games attended on consecutive days.
+    private func backToBackGames(_ games: [AttendedGame]) -> [AttendedGame] {
+        let sorted = games.sorted { $0.date < $1.date }
+        guard sorted.count >= 2 else { return [] }
+        var result: [AttendedGame] = []
+        for i in 1..<sorted.count {
+            let diff = Calendar.current.dateComponents([.day], from: sorted[i - 1].date, to: sorted[i].date).day ?? 99
+            if diff == 1 {
+                if result.last?.id != sorted[i - 1].id { result.append(sorted[i - 1]) }
+                result.append(sorted[i])
+            }
+        }
+        return result
+    }
+
+    /// Whether a specific game satisfies an event-based badge requirement.
+    private func qualifies(game g: AttendedGame) -> Bool {
+        switch achievement.id {
         // ── Game experience ──
         case "extras":        return g.highlights.contains { Int($0.inning.dropFirst()) ?? 0 >= 10 }
         case "walkoff":       return g.highlights.contains { $0.kind == .walkoff }
@@ -992,11 +1058,9 @@ private struct AchievementDetailSheet: View {
         case "slugfest":      return g.highlights.filter { $0.kind == .homeRun }.count >= 5
         case "sunday":        return Calendar.current.component(.weekday, from: g.date) == 1
         case "rain":          return g.weather == .rain
-        // ── Fan dedication ──
-        case "die_hard", "iron_fan", "silver_slugger", "century", "back_to_back", "streak", "streak5":
-            return true
-        // ── Road / rivalry ──
-        case "road_warrior", "international", "dome_dweller": return true
+        // ── Win streaks ──
+        case "streak", "streak5": return g.userWon
+        // ── Rivalries ──
         case "rivalry_subway":   return ["nyy", "nym"].contains(g.homeTeamId) && ["nyy", "nym"].contains(g.awayTeamId)
         case "rivalry_freeway":  return ["lad", "laa"].contains(g.homeTeamId) && ["lad", "laa"].contains(g.awayTeamId)
         case "rivalry_crosstown": return ["chc", "cws"].contains(g.homeTeamId) && ["chc", "cws"].contains(g.awayTeamId)
@@ -1005,19 +1069,17 @@ private struct AchievementDetailSheet: View {
         // ── Hidden ──
         default:
             if achievement.id.hasPrefix("hid_") {
-                let parkId = parkForHidden(id: achievement.id)
-                if let parkId { return g.ballparkId == parkId }
-                if achievement.id == "hid_classic_trio" { return true }
+                if let parkId = parkForHidden(id: achievement.id) { return g.ballparkId == parkId }
+                if achievement.id == "hid_classic_trio" {
+                    return ["fenway-park", "wrigley-field", "dodger-stadium"].contains(g.ballparkId)
+                }
                 if achievement.id == "hid_one_run"   { return abs(g.homeScore - g.awayScore) == 1 }
                 if achievement.id == "hid_blowout15" { return abs(g.homeScore - g.awayScore) >= 15 }
                 if achievement.id == "hid_marathon"  { return g.highlights.contains { Int($0.inning.dropFirst()) ?? 0 >= 15 } }
                 if achievement.id == "hid_grand_slam" { return g.highlights.contains { $0.description.lowercased().contains("grand slam") } }
-                if achievement.id == "hid_decade", achievement.id == "hid_10k_miles", achievement.id == "hid_10000", achievement.id == "hid_iron_butt" {
-                    return true
-                }
                 return !g.milestones.isEmpty
             }
-            return true
+            return false
         }
     }
 
