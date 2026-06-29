@@ -249,7 +249,7 @@ struct PlayerMilestone: Identifiable, Hashable, Codable {
 
         var symbol: String {
             switch self {
-            case .homeRun: return "baseball.diamond.fill"
+            case .homeRun: return "baseball.fill"
             case .hits: return "figure.baseball"
             case .strikeouts: return "flame.fill"
             case .wins: return "trophy.fill"
@@ -257,7 +257,7 @@ struct PlayerMilestone: Identifiable, Hashable, Codable {
             case .debut: return "sparkles"
             case .noHitter: return "hand.raised.fill"
             case .cycle: return "arrow.triangle.2.circlepath"
-            case .milestone: return "star.circle.fill"
+            case .milestone: return "rosette"
             }
         }
 

@@ -486,10 +486,6 @@ private struct TicketStubReal: View {
                     Text("ONE")
                         .font(.scoreboard(16, weight: .black))
                         .foregroundStyle(Theme.parchmentInk)
-                    Text(game.date.formatted(.dateTime.day()))
-                        .font(.stat(13, weight: .heavy))
-                        .foregroundStyle(Theme.parchmentInk)
-                        .padding(.top, 1)
                     if !game.verified {
                         Text("UNVERIFIED")
                             .font(.system(size: 6, weight: .bold))

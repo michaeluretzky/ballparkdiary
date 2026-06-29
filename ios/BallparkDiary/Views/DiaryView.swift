@@ -11,6 +11,17 @@ struct DiaryView: View {
     @State private var yearFilter: Int? = nil
     @State private var teamFilter: String? = nil
 
+    init() {
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(Theme.nightDeep.opacity(0.95))
+        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
+        appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
+        UINavigationBar.appearance().standardAppearance = appearance
+        UINavigationBar.appearance().scrollEdgeAppearance = appearance
+        UINavigationBar.appearance().compactAppearance = appearance
+    }
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
@@ -24,13 +35,14 @@ struct DiaryView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
 
-                        YearFilterBar(selectedYear: $yearFilter, availableYears: availableYears)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 4)
-
-                        TeamFilterBar(selectedTeam: $teamFilter, availableTeams: availableTeams)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 4)
+                        DiaryFilterBar(
+                            selectedYear: $yearFilter,
+                            selectedTeam: $teamFilter,
+                            availableYears: availableYears,
+                            availableTeams: availableTeams
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
 
                         if !store.upcomingGames.isEmpty && yearFilter == nil && teamFilter == nil {
                             VStack(alignment: .leading, spacing: 12) {
@@ -204,9 +216,13 @@ struct DiaryView: View {
         return result
     }
 
-    private var availableYears: [Int] {
-        let years = Set(store.completedGames.map { Calendar.current.component(.year, from: $0.date) })
-        return years.sorted(by: >)
+    private var availableYears: [(year: Int, count: Int)] {
+        var counts: [Int: Int] = [:]
+        for g in store.completedGames {
+            let year = Calendar.current.component(.year, from: g.date)
+            counts[year, default: 0] += 1
+        }
+        return counts.map { (year: $0.key, count: $0.value) }.sorted { $0.year > $1.year }
     }
 
     private var availableTeams: [(team: Team, count: Int)] {
@@ -419,8 +435,8 @@ private struct TeamChip: View {
     let primary: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
-            TeamLogoView(team: team, size: 36, showGloss: false)
+        HStack(spacing: 7) {
+            TeamLogoView(team: team, size: 30, showGloss: false)
             Text(team.fullName)
                 .font(.stat(11, weight: .heavy))
                 .foregroundStyle(primary ? .white : .white.opacity(0.65))
@@ -509,121 +525,126 @@ private struct EmptyTip: View {
     }
 }
 
-// MARK: - Year filter
+// MARK: - Filters (dropdown menus)
 
-private struct YearFilterBar: View {
+private struct DiaryFilterBar: View {
     @Binding var selectedYear: Int?
-    let availableYears: [Int]
-    @Environment(DiaryStore.self) private var store
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                FilterChip(label: "All", isSelected: selectedYear == nil) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedYear = nil
-                    }
-                }
-                ForEach(availableYears, id: \.self) { year in
-                    FilterChip(label: "\(year)", isSelected: selectedYear == year) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedYear = (selectedYear == year) ? nil : year
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 4)
-        }
-    }
-}
-
-private struct FilterChip: View {
-    let label: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 13, weight: isSelected ? .heavy : .semibold))
-                .foregroundStyle(isSelected ? .white : .white.opacity(0.6))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule()
-                        .fill(isSelected ? Theme.clay : Theme.cardElevated)
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(isSelected ? Theme.clay.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Team filter
-
-private struct TeamFilterBar: View {
     @Binding var selectedTeam: String?
+    let availableYears: [(year: Int, count: Int)]
     let availableTeams: [(team: Team, count: Int)]
 
+    private var yearLabel: String {
+        if let y = selectedYear,
+           let match = availableYears.first(where: { $0.year == y }) {
+            return "\(match.year) (\(match.count))"
+        }
+        return "All Years"
+    }
+
+    private var teamLabel: String {
+        if let id = selectedTeam,
+           let match = availableTeams.first(where: { $0.team.id == id }) {
+            return "\(match.team.abbreviation) (\(match.count))"
+        }
+        return "All Teams"
+    }
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                TeamFilterChip(abbreviation: "ALL", tint: Theme.cardElevated, isSelected: selectedTeam == nil) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedTeam = nil
-                    }
+        HStack(spacing: 10) {
+            Menu {
+                Button {
+                    setYear(nil)
+                } label: {
+                    if selectedYear == nil { Label("All Years", systemImage: "checkmark") }
+                    else { Text("All Years") }
                 }
-                ForEach(availableTeams, id: \.team.id) { pair in
-                    TeamFilterChip(
-                        abbreviation: pair.team.abbreviation,
-                        tint: pair.team.primary,
-                        isSelected: selectedTeam == pair.team.id,
-                        count: pair.count
-                    ) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedTeam = (selectedTeam == pair.team.id) ? nil : pair.team.id
+                ForEach(availableYears, id: \.year) { item in
+                    Button {
+                        setYear(item.year)
+                    } label: {
+                        if selectedYear == item.year {
+                            Label("\(item.year) (\(item.count))", systemImage: "checkmark")
+                        } else {
+                            Text("\(item.year) (\(item.count))")
                         }
                     }
                 }
+            } label: {
+                FilterDropdownLabel(
+                    icon: "calendar",
+                    text: yearLabel,
+                    isActive: selectedYear != nil
+                )
             }
-            .padding(.horizontal, 4)
+
+            Menu {
+                Button {
+                    setTeam(nil)
+                } label: {
+                    if selectedTeam == nil { Label("All Teams", systemImage: "checkmark") }
+                    else { Text("All Teams") }
+                }
+                ForEach(availableTeams, id: \.team.id) { item in
+                    Button {
+                        setTeam(item.team.id)
+                    } label: {
+                        if selectedTeam == item.team.id {
+                            Label("\(item.team.abbreviation) — \(item.team.fullName) (\(item.count))", systemImage: "checkmark")
+                        } else {
+                            Text("\(item.team.abbreviation) — \(item.team.fullName) (\(item.count))")
+                        }
+                    }
+                }
+            } label: {
+                FilterDropdownLabel(
+                    icon: "baseball",
+                    text: teamLabel,
+                    isActive: selectedTeam != nil
+                )
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func setYear(_ year: Int?) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            selectedYear = year
+        }
+    }
+
+    private func setTeam(_ id: String?) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            selectedTeam = id
         }
     }
 }
 
-private struct TeamFilterChip: View {
-    let abbreviation: String
-    let tint: Color
-    let isSelected: Bool
-    var count: Int? = nil
-    let action: () -> Void
+private struct FilterDropdownLabel: View {
+    let icon: String
+    let text: String
+    let isActive: Bool
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Text(abbreviation)
-                    .font(.stat(11, weight: isSelected ? .heavy : .semibold))
-                    .foregroundStyle(isSelected ? .white : .white.opacity(0.6))
-                if let count {
-                    Text("\(count)")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                Capsule()
-                    .fill(isSelected ? tint : tint.opacity(0.12))
-            )
-            .overlay(
-                Capsule()
-                    .strokeBorder(isSelected ? tint.opacity(0.6) : Color.white.opacity(0.08), lineWidth: 1)
-            )
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+            Text(text)
+                .font(.system(size: 13, weight: .heavy))
+                .lineLimit(1)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
         }
-        .buttonStyle(.plain)
+        .foregroundStyle(isActive ? .white : .white.opacity(0.7))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(isActive ? Theme.clay : Theme.cardElevated)
+        )
+        .overlay(
+            Capsule()
+                .strokeBorder(isActive ? Theme.clay.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 }
