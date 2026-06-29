@@ -87,13 +87,7 @@ extension Ballpark {
         .init(id: "petco-park", name: "Petco Park", nickname: "America's Ballpark", team: .padres, city: "San Diego", state: "CA", latitude: 32.7073, longitude: -117.1566, capacity: 40_209, opened: 2004, surface: "Grass", roof: .open, illustration: .landmark("Coronado Bridge"), trivia: "The 1909 Western Metal Supply Co. building is preserved inside the left field corner."),
         .init(id: "angel-stadium", name: "Angel Stadium", nickname: "The Big A", team: .angels, city: "Anaheim", state: "CA", latitude: 33.8003, longitude: -117.8827, capacity: 45_517, opened: 1966, surface: "Grass", roof: .open, illustration: .landmark("The Big A"), trivia: "The Big A scoreboard out beyond the parking lot is the third-largest in the majors."),
         .init(id: "t-mobile-park", name: "T-Mobile Park", nickname: "The Safe", team: .mariners, city: "Seattle", state: "WA", latitude: 47.5914, longitude: -122.3325, capacity: 47_929, opened: 1999, surface: "Grass", roof: .retractable, illustration: .landmark("Space Needle"), trivia: "The roof is an umbrella, not a lid — it shelters but doesn't enclose."),
-        .init(id: "sutter-health-park", name: "Sutter Health Park", nickname: "The A's New Home", team: .athletics, city: "Sacramento", state: "CA", latitude: 38.5800, longitude: -121.5130, capacity: 14_014, opened: 2000, surface: "Grass", roof: .open, illustration: .landmark("Tower Bridge"), trivia: "The smallest park in the majors during the Athletics' transitional years."),
-        // ── International venues ──
-        .init(id: "london-stadium", name: "London Stadium", nickname: "Queen Elizabeth Olympic Park", team: .international, city: "London", state: "UK", latitude: 51.5387, longitude: -0.0167, capacity: 66_000, opened: 2012, surface: "Grass", roof: .open, illustration: .landmark("London Skyline"), trivia: "Built for the 2012 Olympics — MLB has played regular-season games here since 2019. The running track remains."),
-        .init(id: "estadio-alfredo-harp-helu", name: "Estadio Alfredo Harp Helú", nickname: "Diablos Rojos' Den", team: .international, city: "Mexico City", state: "Mexico", latitude: 19.3288, longitude: -99.0893, capacity: 20_062, opened: 2019, surface: "Artificial Turf", roof: .open, illustration: .landmark("Mexico City Skyline"), trivia: "At 7,349 feet, it's the highest-capacity MLB-quality park — even higher than Coors Field. Padres and Giants played here in 2023."),
-        .init(id: "tokyo-dome", name: "Tokyo Dome", nickname: "The Big Egg", team: .international, city: "Tokyo", state: "Japan", latitude: 35.7056, longitude: 139.7519, capacity: 55_000, opened: 1988, surface: "Artificial Turf", roof: .dome, illustration: .dome, trivia: "The home of Japanese baseball — Shohei Ohtani's NPB debut happened here. MLB opened the 2025 season at Tokyo Dome."),
-        .init(id: "sydney-cricket-ground", name: "Sydney Cricket Ground", nickname: "The SCG", team: .international, city: "Sydney", state: "Australia", latitude: -33.8915, longitude: 151.2247, capacity: 48_000, opened: 1848, surface: "Grass", roof: .open, illustration: .landmark("Sydney Harbour"), trivia: "Diamondbacks and Dodgers opened the 2014 season here. The Members Pavilion dates to 1886."),
-        .init(id: "hiram-bithorn-stadium", name: "Hiram Bithorn Stadium", nickname: "San Juan's Field of Dreams", team: .international, city: "San Juan", state: "Puerto Rico", latitude: 18.4160, longitude: -66.0734, capacity: 18_264, opened: 1962, surface: "Grass", roof: .open, illustration: .landmark("Caribbean Coast"), trivia: "Named after the first Puerto Rican MLB player. Expos played 22 'home' games here in 2003–04. Roberto Clemente's legacy runs deep.")
+        .init(id: "sutter-health-park", name: "Sutter Health Park", nickname: "The A's New Home", team: .athletics, city: "Sacramento", state: "CA", latitude: 38.5800, longitude: -121.5130, capacity: 14_014, opened: 2000, surface: "Grass", roof: .open, illustration: .landmark("Tower Bridge"), trivia: "The smallest park in the majors during the Athletics' transitional years.")
     ]
 
     static func by(id: String) -> Ballpark? {
@@ -169,8 +163,6 @@ extension Ballpark {
         "angel-stadium":            URL(string: "https://upload.wikimedia.org/wikipedia/commons/4/4a/Angelstadiummarch2019.jpg")!,
         "t-mobile-park":            URL(string: "https://upload.wikimedia.org/wikipedia/commons/1/1a/Seattle_Safeco_Field_01.jpg")!,
         "sutter-health-park":       URL(string: "https://upload.wikimedia.org/wikipedia/commons/8/84/Outside_Sutter_Health_Park.jpg")!,
-        "london-stadium":           URL(string: "https://upload.wikimedia.org/wikipedia/commons/1/18/London_Stadium_from_Stratford_Walk.jpg")!,
-        "tokyo-dome":               URL(string: "https://upload.wikimedia.org/wikipedia/commons/7/7f/Tokyo_Dome_Panorama.jpg")!,
     ]
 
     // MARK: - Fun discoveries (ballpark quest facts)
@@ -208,11 +200,6 @@ extension Ballpark {
         "angel-stadium": ["The Big A sign is the third-largest scoreboard in the majors.", "A rock pile in left-center mimics the Anaheim Hills."],
         "t-mobile-park": ["The retractable roof is an umbrella — it shelters but doesn't enclose.", "The Hit It Here Cafe is a two-story restaurant with field views."],
         "sutter-health-park": ["The gold Tower Bridge beyond left field honors Gold Rush history.", "Lawn seating in right field is one of the most affordable MLB experiences."],
-        "london-stadium": ["The running track from the 2012 Olympics still circles the field.", "MLB transformed a soccer pitch into a ballpark — with the foul poles 330 ft from home."],
-        "estadio-alfredo-harp-helu": ["At 7,349 ft elevation, breaking balls behave differently here.", "The Diablos Rojos' home park is a modern architectural gem in Mexico City."],
-        "tokyo-dome": ["The inflatable roof is held up by air pressure — like a giant balloon.", "Shohei Ohtani made his NPB debut here for the Hokkaido Nippon-Ham Fighters."],
-        "sydney-cricket-ground": ["The Members Pavilion dates to 1886 — cricket and baseball share the same sacred ground.", "The historic SCG has hosted Test cricket, rugby, AFL, and now MLB."],
-        "hiram-bithorn-stadium": ["Roberto Clemente's statue stands outside — Puerto Rico's greatest baseball hero.", "The Expos played 22 regular-season games here, splitting time between Montreal and San Juan."],
     ]
 
     /// A random fun fact for this park.

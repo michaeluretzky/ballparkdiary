@@ -55,7 +55,16 @@ struct BallparkDiaryApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
-                        Task { await store.refresh() }
+                        // Always drain any tickets the user shared while the app
+                        // was backgrounded — the share extension can't reliably
+                        // launch us, so importing on every foreground guarantees
+                        // a shared screenshot/photo shows up the next time the
+                        // user opens the app. Bypasses the refresh throttle.
+                        Task {
+                            let count = await store.importSharedTickets()
+                            if count > 0 { store.requestedTab = "diary" }
+                            await store.refresh()
+                        }
                     }
                 }
         }

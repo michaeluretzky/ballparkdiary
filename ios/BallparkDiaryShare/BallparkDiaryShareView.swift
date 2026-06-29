@@ -197,7 +197,7 @@ struct ShareView: View {
         case .working:
             return "Everything stays on your device — no accounts, no uploads."
         case .saved:
-            return "Open your diary to confirm against the real box score."
+            return "Saved. Tap Open Diary — or just open Ballpark Diary anytime and it'll be waiting, confirmed against the real box score."
         case .nothingFound:
             return "Couldn't detect a matchup. You can add this one by hand."
         }
