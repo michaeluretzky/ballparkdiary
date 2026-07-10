@@ -5,6 +5,7 @@ import RevenueCat
 struct BallparkDiaryApp: App {
     @State private var store = DiaryStore()
     @State private var storeKit = StoreViewModel()
+    @State private var location = LocationService()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -41,6 +42,7 @@ struct BallparkDiaryApp: App {
             RootView()
                 .environment(store)
                 .environment(storeKit)
+                .environment(location)
                 .preferredColorScheme(.dark)
                 .tint(Theme.clay)
                 .task {

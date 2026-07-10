@@ -613,16 +613,24 @@ final class DiaryStore {
     func discoveryFor(_ park: Ballpark) -> String { park.discoveryFact() }
 
     /// Nearby parks the user hasn't visited yet, sorted by distance from the
-    /// user's favorite team's home ballpark (or current city).
-    func nearestUnvisitedParks(limit: Int = 3) -> [Ballpark] {
-        let homeCoordinate = Ballpark.by(teamId: favoriteTeamId)?.coordinate
-            ?? CLLocationCoordinate2D(latitude: 39.5, longitude: -96.0)
-        let homeLoc = CLLocation(latitude: homeCoordinate.latitude, longitude: homeCoordinate.longitude)
+    /// user's real location when available, otherwise from the favorite team's
+    /// home ballpark. Visited parks are always excluded, so the suggestion
+    /// automatically advances to the next closest unvisited park.
+    func nearestUnvisitedParks(limit: Int = 3, from origin: CLLocation? = nil) -> [Ballpark] {
+        let anchor = origin ?? questAnchorLocation
         return ballparksRemaining.sorted { a, b in
-            let da = homeLoc.distance(from: CLLocation(latitude: a.latitude, longitude: a.longitude))
-            let db = homeLoc.distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+            let da = anchor.distance(from: CLLocation(latitude: a.latitude, longitude: a.longitude))
+            let db = anchor.distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
             return da < db
         }.prefix(limit).map { $0 }
+    }
+
+    /// Fallback anchor when the user hasn't shared their location:
+    /// the favorite team's home ballpark, or the geographic center of MLB.
+    var questAnchorLocation: CLLocation {
+        let homeCoordinate = Ballpark.by(teamId: favoriteTeamId)?.coordinate
+            ?? CLLocationCoordinate2D(latitude: 39.5, longitude: -96.0)
+        return CLLocation(latitude: homeCoordinate.latitude, longitude: homeCoordinate.longitude)
     }
 
     /// Parks visited in chronological order — used to draw journey lines on the map.

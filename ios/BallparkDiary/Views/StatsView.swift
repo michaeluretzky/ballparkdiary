@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 /// Dashboard of derived statistics: totals, record, ballpark progress and milestones.
 struct StatsView: View {
@@ -675,6 +676,18 @@ private struct LuckyCharmCard: View {
 
 private struct BallparkQuestCard: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(LocationService.self) private var location
+
+    /// Nearest-first unvisited parks, anchored on the user's location when shared.
+    private var nextParks: [Ballpark] {
+        store.nearestUnvisitedParks(limit: 3, from: location.lastLocation)
+    }
+
+    private func milesAway(_ park: Ballpark) -> Int {
+        let anchor = location.lastLocation ?? store.questAnchorLocation
+        let meters = anchor.distance(from: CLLocation(latitude: park.latitude, longitude: park.longitude))
+        return Int((meters / 1609.34).rounded())
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -698,11 +711,13 @@ private struct BallparkQuestCard: View {
                         .foregroundStyle(Theme.textPrimary)
                 }
             } else {
-                Text("\(store.ballparksRemaining.count) left. Next up:")
+                Text(location.hasUserLocation
+                     ? "\(store.ballparksRemaining.count) left. Closest to you:"
+                     : "\(store.ballparksRemaining.count) left. Closest to your home park:")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                 VStack(spacing: 8) {
-                    ForEach(store.ballparksRemaining.prefix(3)) { park in
+                    ForEach(nextParks) { park in
                         HStack(spacing: 10) {
                             Image(systemName: "mappin.circle.fill")
                                 .font(.system(size: 15, weight: .bold))
@@ -717,6 +732,9 @@ private struct BallparkQuestCard: View {
                                     .foregroundStyle(Theme.textMuted)
                             }
                             Spacer()
+                            Text("\(milesAway(park)) mi")
+                                .font(.stat(12, weight: .bold))
+                                .foregroundStyle(Theme.textSecondary)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
@@ -727,6 +745,9 @@ private struct BallparkQuestCard: View {
         }
         .padding(16)
         .nightCard()
+        .onAppear {
+            location.requestLocationIfNeeded()
+        }
     }
 }
 

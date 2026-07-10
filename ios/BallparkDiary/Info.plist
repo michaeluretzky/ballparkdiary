@@ -22,6 +22,8 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location points the ballpark quest at the closest park you haven't visited yet. If you'd rather not share it, we'll use your home ballpark instead.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan a paper ticket stub or snap a photo of the ballpark to add it as a memory to your baseball diary.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

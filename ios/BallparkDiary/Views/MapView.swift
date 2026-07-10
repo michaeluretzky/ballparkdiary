@@ -6,6 +6,7 @@ import MapKit
 struct MapView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(StoreViewModel.self) private var storeKit
+    @Environment(LocationService.self) private var location
     @State private var showPaywall: Bool = false
 
     @State private var position: MapCameraPosition = .region(
@@ -114,7 +115,11 @@ struct MapView: View {
             VStack {
                 Spacer()
                 if selected == nil, !store.ballparksRemaining.isEmpty {
-                    NextParkBanner(parks: store.nearestUnvisitedParks(limit: 1)) { park in
+                    NextParkBanner(
+                        parks: store.nearestUnvisitedParks(limit: 1, from: location.lastLocation),
+                        origin: location.lastLocation ?? store.questAnchorLocation,
+                        anchoredToUser: location.hasUserLocation
+                    ) { park in
                         withAnimation(Theme.Motion.gentle) {
                             selected = park
                             discoveryFact = store.discoveryFor(park)
@@ -152,6 +157,9 @@ struct MapView: View {
         .sheet(isPresented: $showPaywall) {
             PaywallView(store: storeKit)
         }
+        .onAppear {
+            location.requestLocationIfNeeded()
+        }
      }
      .navigationDestination(for: AttendedGame.self) { game in
          GameDetailView(game: game)
@@ -168,7 +176,7 @@ struct MapView: View {
 
     /// IDs of the top 3 nearest unvisited parks.
     private var nextParkIds: Set<String> {
-        Set(store.nearestUnvisitedParks(limit: 3).map(\.id))
+        Set(store.nearestUnvisitedParks(limit: 3, from: location.lastLocation).map(\.id))
     }
 
     /// Division labels placed at the geographic centroid of each division.
@@ -303,8 +311,15 @@ private struct MapHeader: View {
 
 private struct NextParkBanner: View {
     let parks: [Ballpark]
+    let origin: CLLocation
+    let anchoredToUser: Bool
     let onTap: (Ballpark) -> Void
     @State private var slideIn: Bool = false
+
+    private func milesAway(_ park: Ballpark) -> Int {
+        let meters = origin.distance(from: CLLocation(latitude: park.latitude, longitude: park.longitude))
+        return Int((meters / 1609.34).rounded())
+    }
 
     var body: some View {
         if let park = parks.first {
@@ -328,6 +343,12 @@ private struct NextParkBanner: View {
                         Text(park.name)
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                        Text(anchoredToUser
+                             ? "\(milesAway(park)) mi from you"
+                             : "\(milesAway(park)) mi from your home park")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Theme.textSecondary)
                             .lineLimit(1)
                     }
 
