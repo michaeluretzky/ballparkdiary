@@ -344,7 +344,7 @@ private struct ProUpgradeBanner: View {
                     Text("Ballpark Diary Pro")
                         .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Milestones, share cards, badges & more")
+                    Text("Road trips, milestones, throwbacks, ticket search & more")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(2)

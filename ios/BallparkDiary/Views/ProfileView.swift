@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 /// Profile / Settings tab where the user manages their favorite team, home
@@ -34,6 +35,10 @@ struct ProfileView: View {
 
                         // Home ballpark
                         homeBallparkCard
+                            .padding(.horizontal, 16)
+
+                        // Game-day reminders
+                        remindersCard
                             .padding(.horizontal, 16)
 
                         // Pro status
@@ -296,6 +301,68 @@ struct ProfileView: View {
         return counts.compactMap { id, count in
             Ballpark.by(id: id).map { ($0, count) }
         }.sorted { $0.count > $1.count }
+    }
+
+    // MARK: - Game-day reminders
+
+    private var remindersCard: some View {
+        let service = NotificationService.shared
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "bell.badge.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.clay)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Theme.clay.opacity(0.16)))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Game-Day Reminders")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("A heads-up the morning of every On Deck game")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { service.isEnabled },
+                    set: { newValue in
+                        Task { await service.setEnabled(newValue, upcoming: store.upcomingGames) }
+                    }
+                ))
+                .tint(Theme.clay)
+                .labelsHidden()
+                .accessibilityLabel("Game-day reminders")
+            }
+
+            if service.permissionDenied {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text("Notifications are off for Ballpark Diary in iOS Settings.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer(minLength: 4)
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        Link("Open Settings", destination: url)
+                            .font(.system(size: 11, weight: .bold))
+                            .tint(Theme.lights)
+                    }
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.lights.opacity(0.08))
+                )
+            }
+        }
+        .padding(16)
+        .nightCard()
+        .task {
+            await service.refreshPermissionStatus()
+        }
     }
 
     // MARK: - Pro status

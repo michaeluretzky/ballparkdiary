@@ -11,9 +11,11 @@ struct PaywallView: View {
 
     private let perks: [Perk] = [
         Perk(symbol: "chart.bar.xaxis", title: "Player milestones & box scores", detail: "Career home runs, no-hitters, complete games — the moments you witnessed"),
+        Perk(symbol: "car.fill", title: "Road-trip builder", detail: "Nearby parks with back-to-back home games, chained into a weekend route"),
+        Perk(symbol: "ticket.fill", title: "Ticket search on upcoming games", detail: "Jump straight to tickets for any game on the map"),
+        Perk(symbol: "calendar.badge.clock", title: "Anniversary throwbacks", detail: "\"One year ago today\" — your old games resurface on their anniversaries"),
         Perk(symbol: "square.and.arrow.up.fill", title: "Shareable game cards", detail: "Turn any game into a card to post or send"),
-        Perk(symbol: "map.fill", title: "30-Ballpark Quest card", detail: "Track your progress toward all 30 MLB parks"),
-        Perk(symbol: "rosette", title: "Pro achievement badges", detail: "Unlock division, rivalry, and road-warrior badges")
+        Perk(symbol: "map.fill", title: "Quest card & Pro badges", detail: "The 30-ballpark quest plus division, rivalry, and road-warrior badges")
     ]
 
     var body: some View {
@@ -133,7 +135,7 @@ struct PaywallView: View {
                     VStack(spacing: 4) {
                         Text("Unlock Pro")
                             .font(.system(size: 17, weight: .heavy))
-                        Text("\(pkg.storeProduct.localizedPriceString) · yours for good")
+                        Text(pkg.storeProduct.localizedPriceString)
                             .font(.system(size: 12, weight: .medium))
                             .opacity(0.9)
                     }
@@ -172,16 +174,37 @@ struct PaywallView: View {
     }
 
     private var legalFooter: some View {
-        Text("Pay once and it's yours. No subscription, no renewals. Restore it on any device signed into your Apple ID.")
-            .font(.system(size: 10))
-            .foregroundStyle(Theme.textMuted)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 12)
+        VStack(spacing: 8) {
+            Text("Pay once and it's yours. No subscription, no renewals. Restore it on any device signed into your Apple ID.")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.textMuted)
+                .multilineTextAlignment(.center)
+
+            HStack(spacing: 12) {
+                Link("Privacy Policy", destination: URL(string: "https://ballparkdiary.app/privacy")!)
+                Text("·").foregroundStyle(Theme.textMuted)
+                Link("Terms", destination: URL(string: "https://ballparkdiary.app/terms")!)
+                Text("·").foregroundStyle(Theme.textMuted)
+                Link("EULA", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+            }
+            .font(.system(size: 10, weight: .semibold))
+            .tint(Theme.lights)
+
+            Text("Ballpark Diary is an independent fan app — not affiliated with, endorsed by, or sponsored by Major League Baseball or any MLB team.")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.textMuted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 12)
     }
 
+    /// Only one-time (non-renewing) packages qualify — the paywall copy
+    /// promises "pay once, no subscription", so a subscription package must
+    /// never slip in via a fallback.
     private var lifetimePackage: Package? {
         guard let current = store.offerings?.current else { return nil }
-        return current.lifetime ?? current.availablePackages.first
+        return current.lifetime
+            ?? current.availablePackages.first { $0.storeProduct.productCategory == .nonSubscription }
     }
 }
 

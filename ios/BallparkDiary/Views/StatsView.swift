@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreLocation
+import UIKit
 
 /// Dashboard of derived statistics: totals, record, ballpark progress and milestones.
 struct StatsView: View {
@@ -90,9 +91,31 @@ struct StatsView: View {
                                 .padding(.horizontal, 16)
                         }
 
+                        // Road-trip builder (Pro)
+                        if !store.ballparksRemaining.isEmpty {
+                            if storeKit.isPremium {
+                                RoadTripCard()
+                                    .padding(.horizontal, 16)
+                            } else {
+                                LockedRoadTripCard(onUnlock: { showPaywall = true })
+                                    .padding(.horizontal, 16)
+                            }
+                        }
+
                         // Top opponents
                         TopOpponentCard()
                             .padding(.horizontal, 16)
+
+                        // Challenge a friend — shareable quest card (free)
+                        ShareQuestCard()
+                            .padding(.horizontal, 16)
+
+                        Text("Ballpark Diary is an independent fan app — not affiliated with or endorsed by Major League Baseball or any team. Game data from the publicly available MLB Stats API.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white.opacity(0.55))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                            .padding(.top, 4)
 
                         Color.clear.frame(height: 30)
                     }
@@ -809,6 +832,221 @@ private struct TopOpponentCard: View {
         }
         .padding(16)
         .nightCardDeep()
+    }
+}
+
+// MARK: - Locked road-trip builder (pro gate)
+
+private struct LockedRoadTripCard: View {
+    let onUnlock: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Road-trip builder")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+            }
+
+            Text("We chain nearby parks with back-to-back home games into a weekend route — dates, matchups, and miles included.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: onUnlock) {
+                HStack(spacing: 6) {
+                    Image(systemName: "car.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Unlock with Pro")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(Theme.lights)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.lights.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Theme.lights.opacity(0.3), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .nightCard()
+    }
+}
+
+// MARK: - Share quest card (friend rivalry, free)
+
+/// Renders a shareable image of the user's ballpark quest — count, record,
+/// and the 30-dot park grid — and hands it to the share sheet. Built for
+/// comparing counts with friends.
+private struct ShareQuestCard: View {
+    @Environment(DiaryStore.self) private var store
+    @State private var shareItem: ShareableImage? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.grass)
+                Text("Challenge a friend")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+            }
+
+            Text("Send your ballpark count and see who gets to 30 first.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                renderAndShare()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Share my ballpark card")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(Theme.grass)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Theme.grass.opacity(0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Theme.grass.opacity(0.35), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share my ballpark quest card")
+        }
+        .padding(16)
+        .nightCardDeep()
+        .sheet(item: $shareItem) { item in
+            ActivityShareSheet(items: [item.image])
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    @MainActor
+    private func renderAndShare() {
+        let card = QuestShareCardView(
+            parksVisited: store.ballparkCount,
+            visitedIds: store.visitedBallparkIds,
+            totalGames: store.totalGames,
+            wins: store.winCount,
+            losses: store.lossCount,
+            hasRootedGames: !store.rootedGames.isEmpty,
+            favoriteTeam: store.favoriteTeam
+        )
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3
+        if let image = renderer.uiImage {
+            shareItem = ShareableImage(image: image)
+        }
+    }
+}
+
+/// The rendered share image: quest count, dot grid, lifetime stats.
+/// Deliberately avoids network-loaded logos — everything draws synchronously.
+private struct QuestShareCardView: View {
+    let parksVisited: Int
+    let visitedIds: Set<String>
+    let totalGames: Int
+    let wins: Int
+    let losses: Int
+    let hasRootedGames: Bool
+    let favoriteTeam: Team
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Text("MY 30-BALLPARK QUEST")
+                    .font(.caps(12, weight: .heavy))
+                    .tracking(3)
+                    .foregroundStyle(Theme.clay)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(parksVisited)")
+                        .font(.scoreboard(64, weight: .black))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("/30")
+                        .font(.scoreboard(28, weight: .bold))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                Text("ballparks visited")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 10), spacing: 6) {
+                ForEach(Ballpark.all) { park in
+                    Circle()
+                        .fill(visitedIds.contains(park.id) ? park.team.primary : Color.white.opacity(0.08))
+                        .overlay(
+                            Circle().strokeBorder(
+                                visitedIds.contains(park.id) ? Theme.lights.opacity(0.5) : Color.white.opacity(0.1),
+                                lineWidth: 1
+                            )
+                        )
+                        .frame(height: 22)
+                }
+            }
+
+            HStack(spacing: 22) {
+                ShareCardStat(value: "\(totalGames)", label: "GAMES")
+                if hasRootedGames {
+                    ShareCardStat(value: "\(wins)\u{2013}\(losses)", label: "RECORD")
+                }
+                ShareCardStat(value: favoriteTeam.abbreviation, label: "MY TEAM")
+            }
+
+            VStack(spacing: 3) {
+                Text("Can you beat my count?")
+                    .font(.headline(15, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("BALLPARK DIARY")
+                    .font(.caps(10, weight: .heavy))
+                    .tracking(3)
+                    .foregroundStyle(Theme.textMuted)
+            }
+        }
+        .padding(28)
+        .frame(width: 360)
+        .background(Theme.nightGradient)
+        .clipShape(.rect(cornerRadius: 24))
+    }
+}
+
+private struct ShareCardStat: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.stat(20, weight: .heavy))
+                .foregroundStyle(Theme.textPrimary)
+            Text(label)
+                .font(.caps(9, weight: .heavy))
+                .tracking(1.5)
+                .foregroundStyle(Theme.textMuted)
+        }
     }
 }
 

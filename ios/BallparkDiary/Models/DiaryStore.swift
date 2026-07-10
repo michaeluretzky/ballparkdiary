@@ -1419,6 +1419,9 @@ final class DiaryStore {
         defaults.removeObject(forKey: storageKey)
         defaults.removeObject(forKey: autoDeleteKey)
         try? FileManager.default.removeItem(at: diaryFileURL)
+        // Cancel scheduled game-day reminders for the erased games and
+        // reset the reminders preference.
+        Task { await NotificationService.shared.setEnabled(false, upcoming: []) }
     }
 
     // MARK: - Export / Import
@@ -1600,6 +1603,8 @@ final class DiaryStore {
             // Fallback to UserDefaults if the file write fails.
             defaults.set(data, forKey: storageKey)
         }
+        // Keep game-day reminders in sync with the upcoming schedule.
+        NotificationService.shared.syncIfEnabled(upcoming: upcomingGames)
     }
 
     private func load() {

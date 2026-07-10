@@ -140,7 +140,9 @@ struct MapView: View {
                         park: park,
                         games: gamesAt(park),
                         discovery: discoveryFact,
-                        discovered: showDiscovery
+                        discovered: showDiscovery,
+                        isPremium: storeKit.isPremium,
+                        onTicketsLocked: { showPaywall = true }
                     ) {
                         withAnimation(Theme.Motion.gentle) {
                             selected = nil
@@ -388,6 +390,8 @@ private struct BallparkSnapshotCard: View {
     let games: [AttendedGame]
     let discovery: String
     let discovered: Bool
+    let isPremium: Bool
+    let onTicketsLocked: () -> Void
     let onClose: () -> Void
     @State private var upcoming: [MLBUpcomingGame] = []
     @State private var isLoadingUpcoming: Bool = true
@@ -476,7 +480,19 @@ private struct BallparkSnapshotCard: View {
                         }
                     }
                     ForEach(upcoming) { g in
-                        UpcomingGameRow(game: g)
+                        UpcomingGameRow(
+                            game: g,
+                            park: park,
+                            isPremium: isPremium,
+                            onLocked: onTicketsLocked
+                        )
+                    }
+                    if !upcoming.isEmpty {
+                        Text(isPremium
+                             ? "Tap a game to find tickets on SeatGeek."
+                             : "Finding tickets is a Pro feature.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.textMuted)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -521,7 +537,8 @@ private struct BallparkSnapshotCard: View {
                                     .foregroundStyle(Theme.textPrimary)
                             }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 4)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -545,35 +562,65 @@ private struct BallparkSnapshotCard: View {
 }
 
 /// One upcoming home game: opponent, weekday + date, first-pitch time.
+/// Tapping opens a SeatGeek ticket search (Pro) or the paywall (free).
 private struct UpcomingGameRow: View {
     let game: MLBUpcomingGame
+    let park: Ballpark
+    let isPremium: Bool
+    let onLocked: () -> Void
+    @Environment(\.openURL) private var openURL
 
     private var opponent: Team? { Team.by(mlbId: game.opponentMlbId) }
 
+    /// SeatGeek search for this specific matchup and date. An outbound link to
+    /// buy tickets for a real-world event — allowed outside IAP.
+    private var ticketURL: URL? {
+        let opponentName = opponent?.fullName ?? ""
+        let dateText = game.date.formatted(.dateTime.month(.wide).day().year())
+        let query = "\(park.team.fullName) vs \(opponentName) \(dateText)"
+        var components = URLComponents(string: "https://seatgeek.com/search")
+        components?.queryItems = [URLQueryItem(name: "search", value: query)]
+        return components?.url
+    }
+
     var body: some View {
-        HStack(spacing: 10) {
-            if let opponent {
-                TeamLogoView(team: opponent, size: 22, showGloss: false)
+        Button {
+            if isPremium {
+                if let url = ticketURL { openURL(url) }
             } else {
-                Image(systemName: "baseball")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textMuted)
-                    .frame(width: 22, height: 22)
+                onLocked()
             }
-            Text("vs \(opponent?.name ?? "TBD")")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(1)
-            Spacer()
-            Text(game.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-                .font(.stat(12, weight: .semibold))
-                .foregroundStyle(Theme.textSecondary)
-            Text(game.date.formatted(date: .omitted, time: .shortened))
-                .font(.stat(12, weight: .heavy))
-                .foregroundStyle(Theme.lights)
+        } label: {
+            HStack(spacing: 10) {
+                if let opponent {
+                    TeamLogoView(team: opponent, size: 22, showGloss: false)
+                } else {
+                    Image(systemName: "baseball")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                        .frame(width: 22, height: 22)
+                }
+                Text("vs \(opponent?.name ?? "TBD")")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Spacer()
+                Text(game.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                    .font(.stat(12, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                Text(game.date.formatted(date: .omitted, time: .shortened))
+                    .font(.stat(12, weight: .heavy))
+                    .foregroundStyle(Theme.lights)
+                Image(systemName: isPremium ? "ticket" : "lock.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(isPremium ? park.team.accentOnDark : Theme.textMuted)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Versus \(opponent?.name ?? "opponent to be determined"), \(game.date.formatted(date: .abbreviated, time: .shortened))")
+        .accessibilityLabel("Versus \(opponent?.name ?? "opponent to be determined"), \(game.date.formatted(date: .abbreviated, time: .shortened)). \(isPremium ? "Opens ticket search." : "Ticket search requires Pro.")")
     }
 }
 

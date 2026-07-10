@@ -4,6 +4,8 @@ import SwiftUI
 /// compact scores, confirmation numbers, and subtle parallax on scroll.
 struct DiaryView: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(StoreViewModel.self) private var storeKit
+    @State private var showPaywall = false
     @State private var showAddSheet = false
     @State private var gameToDelete: AttendedGame? = nil
     @State private var showDeleteConfirm = false
@@ -44,6 +46,22 @@ struct DiaryView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
 
+                        if let throwback = throwbackGame {
+                            if storeKit.isPremium {
+                                NavigationLink(value: throwback) {
+                                    ThrowbackBanner(game: throwback)
+                                        .padding(.horizontal, 16)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                Button { showPaywall = true } label: {
+                                    LockedThrowbackBanner()
+                                        .padding(.horizontal, 16)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
                         DiaryFilterBar(
                             selectedYear: $yearFilter,
                             selectedTeam: $teamFilter,
@@ -53,7 +71,8 @@ struct DiaryView: View {
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
 
-                        if !store.upcomingGames.isEmpty && yearFilter == nil && teamFilter == nil {
+                        if !store.upcomingGames.isEmpty && yearFilter == nil && teamFilter == nil
+                            && searchText.trimmingCharacters(in: .whitespaces).isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
                                     Circle()
@@ -90,7 +109,8 @@ struct DiaryView: View {
                             }
                         }
 
-                        if filteredGroupedGames.isEmpty && (yearFilter != nil || teamFilter != nil) {
+                        if filteredGroupedGames.isEmpty
+                            && (yearFilter != nil || teamFilter != nil || !searchText.trimmingCharacters(in: .whitespaces).isEmpty) {
                             VStack(spacing: 16) {
                                 Spacer().frame(height: 20)
                                 Image(systemName: "magnifyingglass")
@@ -98,16 +118,19 @@ struct DiaryView: View {
                                     .foregroundStyle(Theme.textMuted)
                                     .frame(width: 64, height: 64)
                                     .background(Circle().fill(Theme.cardElevated))
-                                Text("No games match these filters")
+                                Text(searchText.trimmingCharacters(in: .whitespaces).isEmpty
+                                     ? "No games match these filters"
+                                     : "No games match your search")
                                     .font(.system(size: 17, weight: .bold))
                                     .foregroundStyle(Theme.textPrimary)
                                 Button {
                                     withAnimation(Theme.Motion.snappy) {
                                         yearFilter = nil
                                         teamFilter = nil
+                                        searchText = ""
                                     }
                                 } label: {
-                                    Text("Clear filters")
+                                    Text(searchText.trimmingCharacters(in: .whitespaces).isEmpty ? "Clear filters" : "Clear search")
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(Theme.clay)
                                         .padding(.horizontal, 20)
@@ -224,6 +247,9 @@ struct DiaryView: View {
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView(store: storeKit)
+            }
             .onAppear {
                 navigateToImportedGameIfNeeded()
             }
@@ -232,6 +258,17 @@ struct DiaryView: View {
                 navigateToImportedGame(gameId: gameId)
             }
         }
+    }
+
+    /// The most recent past-year game attended on today's calendar day.
+    /// Powers the Pro anniversary throwback banner. Compares calendar years
+    /// (not elapsed time) so the banner shows all day on the anniversary.
+    private var throwbackGame: AttendedGame? {
+        let cal = Calendar.current
+        let currentYear = cal.component(.year, from: .now)
+        return store.onThisDayGames
+            .filter { cal.component(.year, from: $0.date) < currentYear }
+            .max { $0.date < $1.date }
     }
 
     private var groupedGames: [(String, [AttendedGame])] {
@@ -590,6 +627,100 @@ private struct EmptyTip: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Theme.cardElevated.opacity(0.6))
         )
+    }
+}
+
+// MARK: - Anniversary throwback (Pro)
+
+/// "N years ago today" banner that resurfaces an old diary entry on its
+/// anniversary. Tapping opens the game.
+private struct ThrowbackBanner: View {
+    let game: AttendedGame
+
+    private var yearsAgo: Int {
+        max(1, Calendar.current.dateComponents([.year], from: game.date, to: .now).year ?? 1)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Theme.lights)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Theme.lights.opacity(0.16)))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(yearsAgo == 1 ? "ONE YEAR AGO TODAY" : "\(yearsAgo) YEARS AGO TODAY")
+                    .font(.caps(9, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(Theme.lights)
+                Text("\(game.awayTeam.abbreviation) \(game.awayScore)\u{2013}\(game.homeScore) \(game.homeTeam.abbreviation)")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Text("You were at \(game.ballpark.name).")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Theme.textMuted)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.lights.opacity(0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Theme.lights.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Throwback: \(yearsAgo) \(yearsAgo == 1 ? "year" : "years") ago today, \(game.awayTeam.fullName) \(game.awayScore) to \(game.homeScore) \(game.homeTeam.fullName) at \(game.ballpark.name). Opens the game.")
+    }
+}
+
+/// Free-tier teaser for the throwback banner — opens the paywall.
+private struct LockedThrowbackBanner: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Theme.textMuted)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Theme.cardElevated))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("THROWBACK")
+                    .font(.caps(9, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(Theme.textMuted)
+                Text("You went to a game on this day.")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Text("Relive it with Pro.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "lock.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Theme.lights)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.cardElevated.opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Throwback: you attended a game on this day in a past year. Unlock anniversary throwbacks with Pro.")
     }
 }
 

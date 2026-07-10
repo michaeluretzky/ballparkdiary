@@ -8,8 +8,8 @@ struct GameDetailView: View {
     @Environment(StoreViewModel.self) private var storeKit
     @Environment(\.dismiss) private var dismiss
     let game: AttendedGame
-    @State private var shareImage: Image? = nil
-    @State private var shareImageData: Data? = nil
+    @State private var shareUIImage: UIImage? = nil
+    @State private var shareItem: ShareableImage? = nil
     @State private var showDeleteConfirm: Bool = false
     @State private var showPaywall: Bool = false
     @State private var showEditSheet: Bool = false
@@ -90,17 +90,20 @@ struct GameDetailView: View {
                             .foregroundStyle(Theme.lights)
                     }
                     .accessibilityLabel("Edit game")
-                    if let shareImageData, let shareImage {
+                    if !liveGame.isUpcoming {
                         if storeKit.isPremium {
-                            ShareLink(
-                                item: shareImageData,
-                                preview: SharePreview("\(liveGame.awayTeam.fullName) @ \(liveGame.homeTeam.fullName)", image: shareImage)
-                            ) {
-                                Image(systemName: "square.and.arrow.up")
-                            }
-                        } else {
                             Button {
                                 renderShareCardIfNeeded()
+                                if let uiImage = shareUIImage {
+                                    shareItem = ShareableImage(image: uiImage)
+                                }
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .foregroundStyle(Theme.lights)
+                            }
+                            .accessibilityLabel("Share game card")
+                        } else {
+                            Button {
                                 showPaywall = true
                             } label: {
                                 HStack(spacing: 4) {
@@ -111,6 +114,7 @@ struct GameDetailView: View {
                                 }
                                 .foregroundStyle(Theme.lights)
                             }
+                            .accessibilityLabel("Share game card, requires Pro")
                         }
                     }
                     Button {
@@ -135,6 +139,10 @@ struct GameDetailView: View {
         .sheet(isPresented: $showPaywall) {
             PaywallView(store: storeKit)
         }
+        .sheet(item: $shareItem) { item in
+            ActivityShareSheet(items: [item.image])
+                .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showEditSheet) {
             EditGameSheet(game: liveGame)
                 .presentationDetents([.medium, .large])
@@ -147,13 +155,12 @@ struct GameDetailView: View {
     /// Lazily render the share card only when the user first taps share.
     @MainActor
     internal func renderShareCardIfNeeded() {
-        guard !hasRenderedShareCard else { return }
+        guard !hasRenderedShareCard || shareUIImage == nil else { return }
         hasRenderedShareCard = true
         let renderer = ImageRenderer(content: ShareableGameCard(game: liveGame).frame(width: 360, height: 480))
         renderer.scale = UIScreen.main.scale
         if let uiImage = renderer.uiImage {
-            shareImage = Image(uiImage: uiImage)
-            shareImageData = uiImage.pngData()
+            shareUIImage = uiImage
         }
     }
 
