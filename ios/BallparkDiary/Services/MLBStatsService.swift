@@ -20,6 +20,9 @@ nonisolated struct MLBUpcomingGame: Sendable, Hashable, Identifiable {
     let gamePk: Int
     let date: Date
     let opponentMlbId: Int
+    /// The club's official box-office link for this exact game (mlb.tickets.com),
+    /// straight from the MLB schedule feed — always the right game, no search.
+    let officialTicketURL: URL?
     var id: Int { gamePk }
 }
 
@@ -162,7 +165,9 @@ nonisolated final class MLBStatsService: Sendable {
             URLQueryItem(name: "sportId", value: "1"),
             URLQueryItem(name: "teamId", value: String(teamMlbId)),
             URLQueryItem(name: "startDate", value: Self.dateFormatter.string(from: start)),
-            URLQueryItem(name: "endDate", value: Self.dateFormatter.string(from: end))
+            URLQueryItem(name: "endDate", value: Self.dateFormatter.string(from: end)),
+            // Ask MLB to include official per-game ticket links in the response.
+            URLQueryItem(name: "hydrate", value: "game(tickets)")
         ]
         guard
             let url = components.url,
@@ -182,7 +187,12 @@ nonisolated final class MLBStatsService: Sendable {
                 else { continue }
                 let state = game.status.abstractGameState ?? ""
                 guard state.caseInsensitiveCompare("Final") != .orderedSame else { continue }
-                games.append(MLBUpcomingGame(gamePk: game.gamePk, date: date, opponentMlbId: away))
+                games.append(MLBUpcomingGame(
+                    gamePk: game.gamePk,
+                    date: date,
+                    opponentMlbId: away,
+                    officialTicketURL: Self.officialTicketURL(from: game.tickets)
+                ))
             }
         }
         return Array(games.sorted { $0.date < $1.date }.prefix(limit))
@@ -379,6 +389,19 @@ nonisolated final class MLBStatsService: Sendable {
         return (hits, stolenBases)
     }
 
+    /// Pick the official box-office link from a game's hydrated ticket blocks.
+    /// Prefers the mobile link, falls back to any entry that carries one.
+    private static func officialTicketURL(from tickets: [TicketBlock]?) -> URL? {
+        guard let tickets, !tickets.isEmpty else { return nil }
+        let preferred = tickets.first { $0.ticketType == "mobile" } ?? tickets.first { $0.ticketLinks?.home != nil }
+        guard
+            let link = (preferred ?? tickets[0]).ticketLinks?.home,
+            let url = URL(string: link),
+            url.scheme == "https"
+        else { return nil }
+        return url
+    }
+
     /// Parse the season home-run number from a play description such as
     /// "Albert Pujols homers (14) on a line drive...".
     private static func parseSeasonHomeRun(from description: String) -> Int? {
@@ -514,7 +537,13 @@ nonisolated final class MLBStatsService: Sendable {
         let status: Status
         let teams: Teams
         let venue: Venue?
+        let tickets: [TicketBlock]?
     }
+    private struct TicketBlock: Decodable {
+        let ticketType: String?
+        let ticketLinks: TicketLinks?
+    }
+    private struct TicketLinks: Decodable { let home: String? }
     private struct Status: Decodable { let abstractGameState: String? }
     private struct Venue: Decodable { let name: String? }
     private struct Teams: Decodable { let home: Side; let away: Side }

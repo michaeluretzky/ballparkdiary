@@ -489,7 +489,7 @@ private struct BallparkSnapshotCard: View {
                     }
                     if !upcoming.isEmpty {
                         Text(isPremium
-                             ? "Tap a game to find tickets on SeatGeek."
+                             ? "Tap a game to get tickets — official box office or resale sites."
                              : "Finding tickets is a Pro feature.")
                             .font(.system(size: 10))
                             .foregroundStyle(Theme.textMuted)
@@ -562,31 +562,55 @@ private struct BallparkSnapshotCard: View {
 }
 
 /// One upcoming home game: opponent, weekday + date, first-pitch time.
-/// Tapping opens a SeatGeek ticket search (Pro) or the paywall (free).
+/// Tapping shows ticket options across sites (Pro) or the paywall (free).
+/// These are outbound links to buy tickets for a real-world event — allowed
+/// outside IAP under App Store guideline 3.1.3(f).
 private struct UpcomingGameRow: View {
     let game: MLBUpcomingGame
     let park: Ballpark
     let isPremium: Bool
     let onLocked: () -> Void
     @Environment(\.openURL) private var openURL
+    @State private var showTicketSites: Bool = false
 
     private var opponent: Team? { Team.by(mlbId: game.opponentMlbId) }
 
-    /// SeatGeek search for this specific matchup and date. An outbound link to
-    /// buy tickets for a real-world event — allowed outside IAP.
-    private var ticketURL: URL? {
+    /// URL-friendly team slug, e.g. "St. Louis Cardinals" → "st-louis-cardinals".
+    private var teamSlug: String {
+        park.team.fullName
+            .lowercased()
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: "'", with: "")
+            .replacingOccurrences(of: " ", with: "-")
+    }
+
+    /// Matchup + date search text for marketplaces with reliable search pages.
+    private var searchQuery: String {
         let opponentName = opponent?.fullName ?? ""
-        let dateText = game.date.formatted(.dateTime.month(.wide).day().year())
-        let query = "\(park.team.fullName) vs \(opponentName) \(dateText)"
-        var components = URLComponents(string: "https://seatgeek.com/search")
-        components?.queryItems = [URLQueryItem(name: "search", value: query)]
+        let dateText = game.date.formatted(.dateTime.month(.abbreviated).day().year())
+        return "\(park.team.fullName) vs \(opponentName) \(dateText)"
+    }
+
+    private func searchURL(base: String, param: String, query: String) -> URL? {
+        var components = URLComponents(string: base)
+        components?.queryItems = [URLQueryItem(name: param, value: query)]
         return components?.url
     }
+
+    /// Resale marketplaces, in addition to the official box-office link.
+    /// Team pages (SeatGeek / StubHub) are used where site search is unreliable.
+    private var marketplaces: [(name: String, url: URL?)] { [
+        ("SeatGeek", URL(string: "https://seatgeek.com/\(teamSlug)-tickets")),
+        ("StubHub", URL(string: "https://www.stubhub.com/\(teamSlug)-tickets")),
+        ("Gametime", searchURL(base: "https://gametime.co/search", param: "query", query: searchQuery)),
+        ("Vivid Seats", searchURL(base: "https://www.vividseats.com/search", param: "searchTerm", query: searchQuery)),
+        ("Ticketmaster", searchURL(base: "https://www.ticketmaster.com/search", param: "q", query: park.team.fullName)),
+    ] }
 
     var body: some View {
         Button {
             if isPremium {
-                if let url = ticketURL { openURL(url) }
+                showTicketSites = true
             } else {
                 onLocked()
             }
@@ -619,8 +643,25 @@ private struct UpcomingGameRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .confirmationDialog(
+            "\(park.team.name) vs \(opponent?.name ?? "TBD") · \(game.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))",
+            isPresented: $showTicketSites,
+            titleVisibility: .visible
+        ) {
+            if let official = game.officialTicketURL {
+                Button("Box Office — MLB Official") { openURL(official) }
+            }
+            ForEach(marketplaces, id: \.name) { site in
+                if let url = site.url {
+                    Button(site.name) { openURL(url) }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The box office link goes straight to this game. Resale sites open the \(park.team.name) listings — prices vary by site. Ballpark Diary is not affiliated with MLB or any ticket seller.")
+        }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Versus \(opponent?.name ?? "opponent to be determined"), \(game.date.formatted(date: .abbreviated, time: .shortened)). \(isPremium ? "Opens ticket search." : "Ticket search requires Pro.")")
+        .accessibilityLabel("Versus \(opponent?.name ?? "opponent to be determined"), \(game.date.formatted(date: .abbreviated, time: .shortened)). \(isPremium ? "Shows ticket options across sites." : "Ticket search requires Pro.")")
     }
 }
 
