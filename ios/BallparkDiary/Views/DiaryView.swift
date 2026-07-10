@@ -604,7 +604,7 @@ private struct DiaryFilterBar: View {
     private var yearLabel: String {
         if let y = selectedYear,
            let match = availableYears.first(where: { $0.year == y }) {
-            return "\(match.year) (\(match.count))"
+            return "\(String(match.year)) (\(match.count))"
         }
         return "All Years"
     }
@@ -631,9 +631,9 @@ private struct DiaryFilterBar: View {
                         setYear(item.year)
                     } label: {
                         if selectedYear == item.year {
-                            Label("\(item.year) (\(item.count))", systemImage: "checkmark")
+                            Label("\(String(item.year)) (\(item.count))", systemImage: "checkmark")
                         } else {
-                            Text("\(item.year) (\(item.count))")
+                            Text("\(String(item.year)) (\(item.count))")
                         }
                     }
                 }

@@ -632,7 +632,7 @@ private struct BallparkWrappedCard: View {
                 ForEach(recaps.prefix(3)) { recap in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("\(recap.year) Season")
+                            Text("\(String(recap.year)) Season")
                                 .font(.scoreboard(18, weight: .bold))
                                 .foregroundStyle(Theme.textPrimary)
                             Spacer()
