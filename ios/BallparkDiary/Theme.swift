@@ -71,6 +71,21 @@ enum Theme {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+
+    // MARK: - Motion
+
+    /// Single source of truth for animation curves. Springs are interruptible
+    /// by default — never wrap these in non-interruptible completion patterns.
+    ///
+    ///   snappy — quick spring for state changes (filters, toggles, steppers).
+    ///   gentle — soft spring for sheets, cards and larger surface movement.
+    ///
+    /// Looping/decorative animations (spins, pulses, shimmers) must additionally
+    /// check `@Environment(\.accessibilityReduceMotion)` and render static when on.
+    enum Motion {
+        static let snappy: Animation = .snappy(duration: 0.35)
+        static let gentle: Animation = .spring(duration: 0.5, bounce: 0.15)
+    }
 }
 
 // MARK: - Typography

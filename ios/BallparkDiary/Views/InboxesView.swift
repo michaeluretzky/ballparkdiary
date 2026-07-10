@@ -110,7 +110,7 @@ private struct CombinedSummary: View {
                             .font(.scoreboard(40, weight: .black))
                             .foregroundStyle(Theme.textPrimary)
                             .contentTransition(.numericText())
-                            .animation(.snappy, value: store.totalGames)
+                            .animation(Theme.Motion.snappy, value: store.totalGames)
                         Text("games")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Theme.textSecondary)
@@ -301,12 +301,13 @@ private struct InboxRow: View {
 
 private struct EmptyInboxesHint: View {
     @State private var animate: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 10) {
             BaseballMark(size: 48)
                 .opacity(animate ? 0.55 : 0.35)
-                .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: animate)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 2).repeatForever(autoreverses: true), value: animate)
             Text("Nothing here yet")
                 .font(.headline(16, weight: .heavy))
                 .foregroundStyle(Theme.textSecondary)
@@ -321,7 +322,7 @@ private struct EmptyInboxesHint: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Theme.card.opacity(0.5))
         )
-        .onAppear { animate = true }
+        .onAppear { if !reduceMotion { animate = true } }
     }
 }
 
@@ -528,7 +529,7 @@ private struct FlaggedDuplicateRow: View {
             // Actions
             HStack(spacing: 10) {
                 Button {
-                    withAnimation(.snappy) {
+                    withAnimation(Theme.Motion.snappy) {
                         store.dismissFlaggedDuplicate(flagged.id)
                     }
                 } label: {
@@ -545,7 +546,7 @@ private struct FlaggedDuplicateRow: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    withAnimation(.snappy) {
+                    withAnimation(Theme.Motion.snappy) {
                         store.acceptFlaggedDuplicate(flagged)
                     }
                 } label: {
@@ -581,11 +582,11 @@ private struct FlaggedDuplicateRow: View {
                 }
                 .onEnded { val in
                     if val.translation.width < -80 {
-                        withAnimation(.snappy) {
+                        withAnimation(Theme.Motion.snappy) {
                             store.dismissFlaggedDuplicate(flagged.id)
                         }
                     }
-                    withAnimation(.snappy) { offset = 0 }
+                    withAnimation(Theme.Motion.snappy) { offset = 0 }
                 }
         )
     }

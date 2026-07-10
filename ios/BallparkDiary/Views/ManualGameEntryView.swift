@@ -257,7 +257,7 @@ struct ManualGameEntryView: View {
                 guard let results = try? await MLBStatsService.shared.games(on: date, teamMlbId: knownMlbId),
                       let match = results.first
                 else {
-                    withAnimation(.snappy) {
+                    withAnimation(Theme.Motion.snappy) {
                         verifyState = .notFound
                         verifyMessage = "We couldn't find a game for that team on that date."
                     }
@@ -298,14 +298,14 @@ struct ManualGameEntryView: View {
                 if let match {
                     await finishVerification(with: match)
                 } else {
-                    withAnimation(.snappy) {
+                    withAnimation(Theme.Motion.snappy) {
                         verifyState = .notFound
                         verifyMessage = "We couldn't find that matchup on that date."
                     }
                 }
             } else {
                 // Offline — save unverified, auto re-verify later.
-                withAnimation(.snappy) {
+                withAnimation(Theme.Motion.snappy) {
                     saveUnverified()
                 }
             }
@@ -365,7 +365,7 @@ struct ManualGameEntryView: View {
             notice = nil
         }
 
-        withAnimation(.snappy) {
+        withAnimation(Theme.Motion.snappy) {
             verifyState = .verified(game: enrichedGame, notice: notice)
         }
     }
@@ -697,7 +697,7 @@ private struct ScoreStepper: View {
                 .font(.scoreboard(40, weight: .black))
                 .foregroundStyle(Theme.textPrimary)
                 .contentTransition(.numericText())
-                .animation(.snappy, value: value)
+                .animation(Theme.Motion.snappy, value: value)
             HStack(spacing: 8) {
                 StepperButton(symbol: "minus") {
                     if value > 0 { value -= 1 }

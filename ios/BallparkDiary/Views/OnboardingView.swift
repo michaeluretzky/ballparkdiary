@@ -25,7 +25,7 @@ struct OnboardingView: View {
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
-            .animation(.smooth(duration: 0.5), value: store.hasPickedFavorite)
+            .animation(Theme.Motion.gentle, value: store.hasPickedFavorite)
         }
     }
 }
@@ -153,6 +153,7 @@ private struct TeamPickerTile: View {
 
 private struct HeroPanel: View {
     @Environment(DiaryStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var ballSpin: Double = 0
     @State private var showManualSheet: Bool = false
 
@@ -172,6 +173,7 @@ private struct HeroPanel: View {
                 .frame(height: 200)
                 .padding(.top, 12)
                 .onAppear {
+                    guard !reduceMotion else { return }
                     withAnimation(.linear(duration: 18).repeatForever(autoreverses: false)) {
                         ballSpin = 360
                     }

@@ -14,6 +14,7 @@ struct ShareView: View {
     @State private var savedCount: Int = 0
     @State private var matchupSummary: String = ""
     @State private var pulse: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Match the main app's Theme — no hardcoded colors.
     private static let nightDeep = Color(red: 0.024, green: 0.047, blue: 0.118)
@@ -133,9 +134,9 @@ struct ShareView: View {
                 Circle()
                     .fill(Self.clay.opacity(0.08))
                     .frame(width: 90, height: 90)
-                    .scaleEffect(pulse ? 1.12 : 0.88)
-                    .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulse)
-                    .onAppear { pulse = true }
+                    .scaleEffect(reduceMotion ? 1.0 : (pulse ? 1.12 : 0.88))
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulse)
+                    .onAppear { if !reduceMotion { pulse = true } }
 
                 Circle()
                     .strokeBorder(Self.clay.opacity(0.25), lineWidth: 2)

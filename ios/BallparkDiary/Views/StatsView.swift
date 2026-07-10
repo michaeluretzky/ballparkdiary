@@ -322,7 +322,7 @@ private struct RecordCard: View {
                 }
                 .frame(height: 8)
                 .onAppear {
-                    withAnimation(.spring(response: 0.9, dampingFraction: 0.85).delay(0.1)) {
+                    withAnimation(Theme.Motion.gentle.delay(0.1)) {
                         animateBar = true
                     }
                 }
@@ -388,7 +388,7 @@ private struct AchievementsPanel: View {
             }
 
             if allAchievements.count > 12 {
-                Button { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { expanded.toggle() } } label: {
+                Button { withAnimation(Theme.Motion.snappy) { expanded.toggle() } } label: {
                     HStack(spacing: 4) {
                         Text(expanded ? "Show less" : "See all \(allAchievements.count) badges")
                             .font(.system(size: 12, weight: .semibold))
@@ -419,6 +419,7 @@ private struct AchievementMini: View {
     let a: Achievement
     var onTap: () -> Void = {}
     @State private var shimmer: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: onTap) {
@@ -460,8 +461,8 @@ private struct AchievementMini: View {
                 .fill(a.unlocked ? Theme.cardElevated : Theme.cardElevated.opacity(0.35))
         )
         .opacity(a.unlocked ? 1.0 : 0.55)
-        .onAppear { if a.unlocked { shimmer = true } }
-        .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: shimmer)
+        .onAppear { if a.unlocked && !reduceMotion { shimmer = true } }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 2).repeatForever(autoreverses: true), value: shimmer)
         }
         .buttonStyle(.plain)
     }

@@ -367,7 +367,7 @@ struct ProfileView: View {
             #if canImport(UIKit)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             #endif
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            withAnimation(Theme.Motion.snappy) {
                 showDebugProToggle.toggle()
             }
         }

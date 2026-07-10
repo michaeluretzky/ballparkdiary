@@ -18,7 +18,7 @@ struct RootView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.smooth(duration: 0.5), value: store.hasCompletedOnboarding)
+        .animation(Theme.Motion.gentle, value: store.hasCompletedOnboarding)
     }
 }
 

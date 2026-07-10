@@ -4,6 +4,7 @@ import SwiftUI
 struct BaseballMark: View {
     var size: CGFloat = 120
     @State private var rotation: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Image("baseball_real")
@@ -13,6 +14,7 @@ struct BaseballMark: View {
             .clipShape(Circle())
             .rotationEffect(.degrees(rotation))
             .onAppear {
+                guard !reduceMotion else { return }
                 withAnimation(.linear(duration: 14).repeatForever(autoreverses: false)) {
                     rotation = 360
                 }

@@ -23,7 +23,7 @@ struct MapView: View {
       ZStack(alignment: .top) {
             Map(position: $position, selection: Binding(get: { selected?.id }, set: { id in
                 if let id, let park = Ballpark.by(id: id) {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    withAnimation(Theme.Motion.gentle) {
                         selected = park
                         discoveryFact = store.discoveryFor(park)
                         showDiscovery = true
@@ -115,7 +115,7 @@ struct MapView: View {
                 Spacer()
                 if selected == nil, !store.ballparksRemaining.isEmpty {
                     NextParkBanner(parks: store.nearestUnvisitedParks(limit: 1)) { park in
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        withAnimation(Theme.Motion.gentle) {
                             selected = park
                             discoveryFact = store.discoveryFor(park)
                             showDiscovery = true
@@ -137,7 +137,7 @@ struct MapView: View {
                         discovery: discoveryFact,
                         discovered: showDiscovery
                     ) {
-                        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        withAnimation(Theme.Motion.gentle) {
                             selected = nil
                             showDiscovery = false
                         }
@@ -147,7 +147,7 @@ struct MapView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: selected)
+            .animation(Theme.Motion.gentle, value: selected)
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView(store: storeKit)
@@ -190,7 +190,7 @@ private struct BallparkPin: View {
     let count: Int
     let isNext: Bool
     @State private var pulse: Bool = false
-    @State private var jiggle: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -209,16 +209,16 @@ private struct BallparkPin: View {
                     .blur(radius: 10)
                     .scaleEffect(pulse ? 1.15 : 0.85)
                     .opacity(pulse ? 0.55 : 1.0)
-                    .animation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulse)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 1.6).repeatForever(autoreverses: true), value: pulse)
             }
 
             // Next park target ring
             if isNext && !visited {
                 Circle()
-                    .strokeBorder(Theme.lights.opacity(pulse ? 0.5 : 0.15), lineWidth: 2)
+                    .strokeBorder(Theme.lights.opacity(reduceMotion ? 0.4 : (pulse ? 0.5 : 0.15)), lineWidth: 2)
                     .frame(width: 44, height: 44)
                     .scaleEffect(pulse ? 1.2 : 0.95)
-                    .animation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true), value: pulse)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 1.3).repeatForever(autoreverses: true), value: pulse)
             }
 
             Circle()
@@ -244,7 +244,7 @@ private struct BallparkPin: View {
                 )
                 .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 3)
         }
-        .onAppear { pulse = true }
+        .onAppear { if !reduceMotion { pulse = true } }
     }
 }
 
@@ -352,7 +352,7 @@ private struct NextParkBanner: View {
             .offset(y: slideIn ? 0 : 60)
             .opacity(slideIn ? 1 : 0)
             .onAppear {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.25)) {
+                withAnimation(Theme.Motion.gentle.delay(0.25)) {
                     slideIn = true
                 }
             }

@@ -713,6 +713,7 @@ private struct MilestonesPanel: View {
 private struct MilestoneMedallion: View {
     let milestone: PlayerMilestone
     @State private var pulse: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 12) {
@@ -744,7 +745,7 @@ private struct MilestoneMedallion: View {
                     .foregroundStyle(.white)
             }
             .scaleEffect(pulse ? 1.05 : 1.0)
-            .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: pulse)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 2).repeatForever(autoreverses: true), value: pulse)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(milestone.title)
@@ -769,7 +770,7 @@ private struct MilestoneMedallion: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.cardElevated)
         )
-        .onAppear { pulse = true }
+        .onAppear { if !reduceMotion { pulse = true } }
     }
 }
 

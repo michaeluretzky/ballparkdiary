@@ -102,7 +102,7 @@ struct DiaryView: View {
                                     .font(.system(size: 17, weight: .bold))
                                     .foregroundStyle(Theme.textPrimary)
                                 Button {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    withAnimation(Theme.Motion.snappy) {
                                         yearFilter = nil
                                         teamFilter = nil
                                     }
@@ -676,13 +676,13 @@ private struct DiaryFilterBar: View {
     }
 
     private func setYear(_ year: Int?) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        withAnimation(Theme.Motion.snappy) {
             selectedYear = year
         }
     }
 
     private func setTeam(_ id: String?) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        withAnimation(Theme.Motion.snappy) {
             selectedTeam = id
         }
     }
