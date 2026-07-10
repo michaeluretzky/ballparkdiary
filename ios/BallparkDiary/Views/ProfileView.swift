@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import RevenueCat
 
 /// Profile / Settings tab where the user manages their favorite team, home
 /// ballpark preference, and subscription status. Persisted choices feed into
@@ -367,6 +368,15 @@ struct ProfileView: View {
 
     // MARK: - Pro status
 
+    /// Upsell line under "Ballpark Diary Free" — shows the live localized
+    /// monthly price once offerings load, and stays price-free until then.
+    private var proUpsellSubtitle: String {
+        if let monthly = storeKit.offerings?.current?.monthly {
+            return "Unlock all Pro features — \(monthly.storeProduct.localizedPriceString)/month"
+        }
+        return "Unlock all Pro features"
+    }
+
     private var proStatusCard: some View {
         Button {
             if !storeKit.isPremium { showPaywall = true }
@@ -389,8 +399,8 @@ struct ProfileView: View {
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Theme.textPrimary)
                     Text(storeKit.isPremium
-                         ? "Lifetime access — all features unlocked"
-                         : "Unlock Pro features — one-time purchase")
+                         ? "Subscription active — all features unlocked"
+                         : proUpsellSubtitle)
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                 }
@@ -405,27 +415,24 @@ struct ProfileView: View {
                             Capsule().fill(Theme.lights.opacity(0.16))
                         )
                 } else {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Theme.grass)
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.grass)
+                        Text("PRO")
+                            .font(.caps(10, weight: .heavy))
+                            .tracking(2)
+                            .foregroundStyle(Theme.lights)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule().fill(Theme.lights.opacity(0.16))
+                    )
                 }
             }
             .padding(16)
             .nightCard()
-            .overlay(alignment: .topTrailing) {
-                if storeKit.isPremium {
-                    Text("PRO")
-                        .font(.caps(9, weight: .heavy))
-                        .tracking(2)
-                        .foregroundStyle(Theme.lights)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule().fill(Theme.lights.opacity(0.16))
-                        )
-                        .padding(12)
-                }
-            }
         }
         .buttonStyle(.plain)
         .disabled(storeKit.isPremium)

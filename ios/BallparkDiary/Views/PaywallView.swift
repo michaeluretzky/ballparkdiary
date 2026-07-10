@@ -2,8 +2,8 @@ import SwiftUI
 import RevenueCat
 
 /// Ballpark Diary Pro paywall. Stadium-night styling matching the rest of the
-/// app, a list of Pro perks, the lifetime package from RevenueCat's current
-/// offering, and a required Restore Purchases action.
+/// app, a list of Pro perks, the monthly subscription package from RevenueCat's
+/// current offering, and a required Restore Purchases action.
 /// Copy is written in a plain, fan-first voice.
 struct PaywallView: View {
     var store: StoreViewModel
@@ -127,7 +127,7 @@ struct PaywallView: View {
             ProgressView()
                 .tint(Theme.clay)
                 .padding(.vertical, 30)
-        } else if let pkg = lifetimePackage {
+        } else if let pkg = monthlyPackage {
             VStack(spacing: 12) {
                 Button {
                     Task { await store.purchase(package: pkg) }
@@ -135,7 +135,7 @@ struct PaywallView: View {
                     VStack(spacing: 4) {
                         Text("Unlock Pro")
                             .font(.system(size: 17, weight: .heavy))
-                        Text(pkg.storeProduct.localizedPriceString)
+                        Text("\(pkg.storeProduct.localizedPriceString)/month")
                             .font(.system(size: 12, weight: .medium))
                             .opacity(0.9)
                     }
@@ -175,7 +175,7 @@ struct PaywallView: View {
 
     private var legalFooter: some View {
         VStack(spacing: 8) {
-            Text("Pay once and it's yours. No subscription, no renewals. Restore it on any device signed into your Apple ID.")
+            Text("Payment is charged to your Apple ID. The subscription renews monthly at the shown price until canceled — cancel anytime in Settings › Apple ID › Subscriptions, at least 24 hours before the period ends.")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textMuted)
                 .multilineTextAlignment(.center)
@@ -198,13 +198,12 @@ struct PaywallView: View {
         .padding(.horizontal, 12)
     }
 
-    /// Only one-time (non-renewing) packages qualify — the paywall copy
-    /// promises "pay once, no subscription", so a subscription package must
-    /// never slip in via a fallback.
-    private var lifetimePackage: Package? {
+    /// The monthly auto-renewable package — the paywall copy discloses a
+    /// monthly renewal, so only subscription packages qualify as a fallback.
+    private var monthlyPackage: Package? {
         guard let current = store.offerings?.current else { return nil }
-        return current.lifetime
-            ?? current.availablePackages.first { $0.storeProduct.productCategory == .nonSubscription }
+        return current.monthly
+            ?? current.availablePackages.first { $0.storeProduct.productCategory == .subscription }
     }
 }
 
