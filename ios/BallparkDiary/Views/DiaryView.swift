@@ -10,17 +10,7 @@ struct DiaryView: View {
     @State private var navigationPath = NavigationPath()
     @State private var yearFilter: Int? = nil
     @State private var teamFilter: String? = nil
-
-    init() {
-        let appearance = UINavigationBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(Theme.nightDeep.opacity(0.95))
-        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
-        appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
-        UINavigationBar.appearance().standardAppearance = appearance
-        UINavigationBar.appearance().scrollEdgeAppearance = appearance
-        UINavigationBar.appearance().compactAppearance = appearance
-    }
+    @State private var searchText: String = ""
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -31,12 +21,24 @@ struct DiaryView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 40)
                     } else {
-                        Text("Diary")
-                            .font(.system(size: 34, weight: .black))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let err = store.lastRefreshError {
+                            HStack(spacing: 8) {
+                                Image(systemName: "wifi.exclamationmark")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(err)
+                                    .font(.system(size: 12, weight: .medium))
+                                Spacer(minLength: 0)
+                            }
+                            .foregroundStyle(Theme.lights)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Theme.lights.opacity(0.08))
+                            )
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
+                        }
 
                         DiaryHeader()
                             .padding(.horizontal, 16)
@@ -55,12 +57,12 @@ struct DiaryView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
                                     Circle()
-                                        .fill(store.favoriteTeam.primary)
+                                        .fill(store.favoriteTeam.accentOnDark)
                                         .frame(width: 8, height: 8)
                                     Text("ON DECK")
                                         .font(.caps(11, weight: .heavy))
                                         .tracking(3)
-                                        .foregroundStyle(store.favoriteTeam.primary)
+                                        .foregroundStyle(store.favoriteTeam.accentOnDark)
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.top, 6)
@@ -88,11 +90,43 @@ struct DiaryView: View {
                             }
                         }
 
+                        if filteredGroupedGames.isEmpty && (yearFilter != nil || teamFilter != nil) {
+                            VStack(spacing: 16) {
+                                Spacer().frame(height: 20)
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 32, weight: .bold))
+                                    .foregroundStyle(Theme.textMuted)
+                                    .frame(width: 64, height: 64)
+                                    .background(Circle().fill(Theme.cardElevated))
+                                Text("No games match these filters")
+                                    .font(.system(size: 17, weight: .bold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                Button {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        yearFilter = nil
+                                        teamFilter = nil
+                                    }
+                                } label: {
+                                    Text("Clear filters")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(Theme.clay)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 10)
+                                        .background(
+                                            Capsule().strokeBorder(Theme.clay.opacity(0.5), lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                        }
+
                         ForEach(Array(filteredGroupedGames.enumerated()), id: \.element.0) { _, group in
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
                                     Rectangle()
-                                        .fill(store.favoriteTeam.primary.opacity(0.6))
+                                        .fill(store.favoriteTeam.accentOnDark.opacity(0.6))
                                         .frame(width: 32, height: 3)
                                         .clipShape(.capsule)
                                     Text(group.0)
@@ -131,7 +165,7 @@ struct DiaryView: View {
                     if !store.games.isEmpty {
                         Text("Ballpark Diary is an independent app. Not affiliated with or endorsed by Major League Baseball, any MLB team, or any player.")
                             .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.25))
+                            .foregroundStyle(.white.opacity(0.55))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 40)
                             .padding(.bottom, 20)
@@ -147,6 +181,7 @@ struct DiaryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
+            .searchable(text: $searchText, prompt: "Search team, ballpark, year, notes")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -154,11 +189,11 @@ struct DiaryView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(store.favoriteTeam.primary)
+                            .foregroundStyle(store.favoriteTeam.accentOnDark)
                             .frame(width: 32, height: 32)
                             .background(
                                 Circle()
-                                    .fill(store.favoriteTeam.primary.opacity(0.15))
+                                    .fill(store.favoriteTeam.accentOnDark.opacity(0.15))
                             )
                     }
                 }
@@ -220,6 +255,22 @@ struct DiaryView: View {
                 })
             }.filter { !$0.1.isEmpty }
         }
+        if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+            let query = searchText.lowercased()
+            result = result.map { group in
+                (group.0, group.1.filter { g in
+                    g.homeTeam.fullName.lowercased().contains(query)
+                    || g.awayTeam.fullName.lowercased().contains(query)
+                    || g.homeTeam.abbreviation.lowercased().contains(query)
+                    || g.awayTeam.abbreviation.lowercased().contains(query)
+                    || g.ballpark.name.lowercased().contains(query)
+                    || g.ballpark.city.lowercased().contains(query)
+                    || g.memory.lowercased().contains(query)
+                    || g.companions.lowercased().contains(query)
+                    || "\(Calendar.current.component(.year, from: g.date))".contains(query)
+                })
+            }.filter { !$0.1.isEmpty }
+        }
         return result
     }
 
@@ -262,15 +313,13 @@ struct DiaryView: View {
 
 private struct DiaryHeader: View {
     @Environment(DiaryStore.self) private var store
-    private var tc: TeamColors { .from(team: store.favoriteTeam) }
-
     var body: some View {
         HStack(spacing: 12) {
             HeaderStat(value: "\(store.totalGames)", label: "Games")
             Divider().frame(height: 32).overlay(Color.white.opacity(0.08))
             HeaderStat(value: "\(store.ballparkCount)/30", label: "Parks")
             Divider().frame(height: 32).overlay(Color.white.opacity(0.08))
-            HeaderStat(value: "\(store.winCount)-\(store.lossCount)", label: "Record")
+            HeaderStat(value: store.rootedGames.isEmpty ? "–" : "\(store.winCount)-\(store.lossCount)", label: "Record")
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
@@ -278,7 +327,7 @@ private struct DiaryHeader: View {
         .nightCard()
         .overlay(alignment: .topLeading) {
             Rectangle()
-                .fill(tc.primary)
+                .fill(store.favoriteTeam.accentOnDark)
                 .frame(width: 40, height: 3)
                 .clipShape(.capsule)
                 .padding(.horizontal, 16)
@@ -333,13 +382,23 @@ struct GameCard: View {
                 .padding(.top, 10)
 
                 HStack(spacing: 8) {
-                    Image(systemName: "mappin")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
-                    Text(game.ballpark.name)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+                    if game.isUpcoming {
+                        Image(systemName: "clock")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(game.homeTeam.accentOnDark)
+                        Text(game.date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute()))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    } else {
+                        Image(systemName: game.userWon ? "trophy.fill" : "circle.dotted")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(game.userRootedForHome == nil ? Theme.textMuted : (game.userWon ? Theme.grass : Theme.foul))
+                        Text(game.scoreString)
+                            .font(.system(size: 12, weight: .heavy, design: .default).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    }
                     Spacer()
                     if let conf = game.confirmationNumber {
                         Text("#\(conf)")
@@ -360,6 +419,8 @@ struct GameCard: View {
         }
         .clipShape(.rect(cornerRadius: 16))
         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(game.awayTeam.fullName) at \(game.homeTeam.fullName), \(game.ballpark.name), \(game.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted)))\(game.isUpcoming ? ", upcoming" : (game.userRootedForHome == nil ? "" : (game.userWon ? ", you won \(game.awayScore) to \(game.homeScore)" : ", you lost \(game.awayScore) to \(game.homeScore)")))")
     }
 
     // MARK: Hero
@@ -386,7 +447,7 @@ struct GameCard: View {
                 .clipShape(.rect(cornerRadius: 6))
                 .padding(10)
 
-            if game.firstPitchTempF > 0 || game.weather != .clear {
+            if game.firstPitchTempF > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: game.weather.symbol)
                         .font(.system(size: 10, weight: .bold))

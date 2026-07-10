@@ -22,6 +22,10 @@ final class DiaryStore {
     /// True while a shared-ticket import / score refresh is running.
     var isRefreshing: Bool = false
 
+    /// Surfaces MLB API failures to the UI so the user knows a refresh didn't
+    /// reach the server. Cleared on the next successful refresh.
+    var lastRefreshError: String? = nil
+
     var favoriteTeamId: String = Team.yankees.id
 
     /// Attended games keyed by the source they came from (shared tickets or
@@ -64,9 +68,34 @@ final class DiaryStore {
     /// Minimum gap between non-forced refreshes.
     private static let refreshThrottle: TimeInterval = 60
 
+    /// Tracks the detached 180-second follow-up refresh Task so repeated pulls
+    /// don't stack up multiple delayed refreshes.
+    private var followUpRefreshTask: Task<Void, Never>?
+
+    // MARK: - Stats memoization
+    /// Cached computed stats — invalidated on save() once the diary exceeds
+    /// ~100 games so repeated property access doesn't recompute expensive
+    /// aggregates on every view render.
+    private var cachedAchievementList: [Achievement]? = nil
+    private var cachedMilesTraveled: Double? = nil
+    private var cachedVisitedParkSequence: [Ballpark]? = nil
+    private var statsCacheGameCount: Int = 0
+
     private let defaults = UserDefaults.standard
     private let storageKey = "ballparkdiary.state.v2"
     private let autoDeleteKey = "ballparkdiary.autoDeleteDuplicates"
+
+    /// File URL for the diary JSON blob in Application Support.
+    private let diaryFileURL: URL = {
+        let fm = FileManager.default
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fm.temporaryDirectory
+        let dir = appSupport.appendingPathComponent("BallparkDiary", isDirectory: true)
+        if !fm.fileExists(atPath: dir.path) {
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir.appendingPathComponent("diary.json")
+    }()
 
     /// Max failed import attempts before dropping a payload.
     private static let maxImportAttempts = 5
@@ -114,11 +143,14 @@ final class DiaryStore {
     var ballparkCount: Int { visitedBallparkIds.count }
     var totalGames: Int { completedGames.count }
     var totalRuns: Int { completedGames.reduce(0) { $0 + $1.totalRuns } }
-    var winCount: Int { completedGames.filter(\.userWon).count }
-    var lossCount: Int { completedGames.count - winCount }
+    /// Games where the user explicitly rooted for a team (not neutral).
+    var rootedGames: [AttendedGame] { completedGames.filter { $0.userRootedForHome != nil } }
+
+    var winCount: Int { rootedGames.filter(\.userWon).count }
+    var lossCount: Int { rootedGames.count - winCount }
     var winPct: Double {
-        guard !completedGames.isEmpty else { return 0 }
-        return Double(winCount) / Double(completedGames.count)
+        guard !rootedGames.isEmpty else { return 0 }
+        return Double(winCount) / Double(rootedGames.count)
     }
 
     var homeRunsWitnessed: Int {
@@ -146,7 +178,7 @@ final class DiaryStore {
     }
 
     var longestStreak: Int {
-        let chrono = completedGames.sorted { $0.date < $1.date }
+        let chrono = rootedGames.sorted { $0.date < $1.date }
         var best = 0, run = 0
         for g in chrono { if g.userWon { run += 1; best = max(best, run) } else { run = 0 } }
         return best
@@ -167,6 +199,9 @@ final class DiaryStore {
 
     /// Total miles traveled between ballparks, computed from chronological visits.
     var milesTraveled: Double {
+        if let cached = cachedMilesTraveled, statsCacheGameCount == games.count {
+            return cached
+        }
         let parks = visitedParkSequence
         guard parks.count > 1 else { return 0 }
         var total: Double = 0
@@ -174,6 +209,10 @@ final class DiaryStore {
             let prev = CLLocation(latitude: parks[i-1].latitude, longitude: parks[i-1].longitude)
             let curr = CLLocation(latitude: parks[i].latitude, longitude: parks[i].longitude)
             total += prev.distance(from: curr) * 0.000621371 // meters to miles
+        }
+        if games.count > 100 {
+            cachedMilesTraveled = total
+            statsCacheGameCount = games.count
         }
         return total
     }
@@ -208,16 +247,15 @@ final class DiaryStore {
 
     /// Month with the best win percentage (minimum 2 games). Returns (monthName, winPct, games).
     var bestMonth: (name: String, winPct: Double, games: Int)? {
-        let grouped = Dictionary(grouping: completedGames) {
+        let grouped = Dictionary(grouping: rootedGames) {
             Calendar.current.component(.month, from: $0.date)
         }
-        let formatter = DateFormatter(); formatter.dateFormat = "MMMM"
         var best: (name: String, winPct: Double, games: Int)?
         for (month, games) in grouped where games.count >= 2 {
             let wins = games.filter(\.userWon).count
             let pct = Double(wins) / Double(games.count)
             let name = Calendar.current.monthSymbols[month - 1]
-            if best == nil || pct > best!.winPct { best = (name, pct, games.count) }
+            if best == nil || pct > best?.winPct ?? 0 { best = (name, pct, games.count) }
         }
         return best
     }
@@ -263,8 +301,16 @@ final class DiaryStore {
     /// Achievements: id, unlocked, and the data needed to display the badge.
     /// Order matters — it determines the grid display order.
     var achievementList: [Achievement] {
-        collectionAchievements + divisionAchievements + gameExperienceAchievements
+        if let cached = cachedAchievementList, statsCacheGameCount == games.count {
+            return cached
+        }
+        let result = collectionAchievements + divisionAchievements + gameExperienceAchievements
             + fanDedicationAchievements + roadRivalryAchievements + hiddenAchievements
+        if games.count > 100 {
+            cachedAchievementList = result
+            statsCacheGameCount = games.count
+        }
+        return result
     }
 
     private var collectionAchievements: [Achievement] {
@@ -443,7 +489,7 @@ final class DiaryStore {
     var witnessedSundayDayGame: Bool {
         completedGames.contains { g in
             let weekday = Calendar.current.component(.weekday, from: g.date)
-            return weekday == 1 && g.weather == .clear
+            return weekday == 1 && (g.weather == .clear || g.weather == .partlyCloudy || g.weather == .cloudy)
         }
     }
 
@@ -581,33 +627,47 @@ final class DiaryStore {
 
     /// Parks visited in chronological order — used to draw journey lines on the map.
     var visitedParkSequence: [Ballpark] {
+        if let cached = cachedVisitedParkSequence, statsCacheGameCount == games.count {
+            return cached
+        }
         let chrono = completedGames.sorted { $0.date < $1.date }
         var seen: Set<String> = []
-        return chrono.compactMap { game -> Ballpark? in
+        let result = chrono.compactMap { game -> Ballpark? in
             guard !seen.contains(game.ballparkId) else { return nil }
             seen.insert(game.ballparkId)
             return game.ballpark
         }
+        if games.count > 100 {
+            cachedVisitedParkSequence = result
+            statsCacheGameCount = games.count
+        }
+        return result
     }
 
     // MARK: - Canonical identity
 
-    /// Calendar day + home team + away team uniquely identifies a game.
-    /// Used for dedup across shared imports and manual entries.
+    /// Calendar day + hour bucket + home team + away team uniquely identifies
+    /// a game. Used for dedup across shared imports and manual entries.
+    /// Including the hour lets doubleheaders (same day, same teams) coexist.
     private func canonicalKey(_ game: AttendedGame) -> String {
         let cal = Calendar(identifier: .gregorian)
-        let c = cal.dateComponents([.year, .month, .day], from: game.date)
+        let c = cal.dateComponents([.year, .month, .day, .hour], from: game.date)
         let ids = [game.homeTeamId, game.awayTeamId].sorted().joined(separator: "-")
-        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)-\(ids)"
+        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)-\(c.hour ?? 0)-\(ids)"
     }
 
     /// Check whether a game with this identity already exists in the diary.
+    /// Uses day + teams only (no hour) for backward-compatible lookup.
     func hasGame(day: Date, homeTeamId: String, awayTeamId: String) -> Bool {
         let cal = Calendar(identifier: .gregorian)
         let c = cal.dateComponents([.year, .month, .day], from: day)
         let ids = [homeTeamId, awayTeamId].sorted().joined(separator: "-")
         let key = "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)-\(ids)"
-        return games.contains { canonicalKey($0) == key }
+        return games.contains { g in
+            let gc = cal.dateComponents([.year, .month, .day], from: g.date)
+            let gIds = [g.homeTeamId, g.awayTeamId].sorted().joined(separator: "-")
+            return "\(gc.year ?? 0)-\(gc.month ?? 0)-\(gc.day ?? 0)-\(gIds)" == key
+        }
     }
 
     // MARK: - Fuzzy duplicate detection
@@ -625,19 +685,29 @@ final class DiaryStore {
             }
         }
 
-        // Same ballpark + date within ±1 day (possible date-parsing variance).
+        // Same ballpark + same matchup within ±1 day (possible date-parsing
+        // variance). Consecutive-day games of the same series are the most
+        // common fan pattern, so we require the SAME two teams to match.
         let candidateDay = cal.startOfDay(for: candidate.date)
+        let candidateTeams = Set([candidate.homeTeamId, candidate.awayTeamId])
         for game in games where game.ballparkId == candidate.ballparkId && game.id != candidate.proposedId {
+            let gameTeams = Set([game.homeTeamId, game.awayTeamId])
+            guard candidateTeams == gameTeams else { continue }
+            // If both games have confirmation numbers and they differ, treat
+            // them as separate games even if teams match.
+            if let gameConf = game.confirmation, !gameConf.trimmingCharacters(in: .whitespaces).isEmpty,
+               let candConf = candidate.confirmation, !candConf.trimmingCharacters(in: .whitespaces).isEmpty,
+               gameConf != candConf {
+                continue
+            }
             let gameDay = cal.startOfDay(for: game.date)
             let diff = abs(gameDay.timeIntervalSince(candidateDay))
-            if diff <= 86400 { // ±1 day
-                // Same ballpark one day apart — likely same game.
+            if diff <= 86400 { // ±1 day, same matchup
                 return game
             }
         }
 
         // Same matchup within ±3 days (possible series overlap).
-        let candidateTeams = Set([candidate.homeTeamId, candidate.awayTeamId])
         for game in games where game.id != candidate.proposedId {
             let gameTeams = Set([game.homeTeamId, game.awayTeamId])
             guard candidateTeams == gameTeams else { continue }
@@ -679,42 +749,84 @@ final class DiaryStore {
         save()
     }
 
-    /// Accept a flagged duplicate: delete the existing game and replace it
-    /// with the flagged candidate (the user confirms the new entry is better).
+    /// Accept a flagged duplicate: merge the candidate's seat + confirmation
+    /// details into the existing game instead of replacing it with a zero-score
+    /// shell. Preserves scores, status, enrichment, companions, and memory.
+    /// If network is available, re-verifies against MLBStatsService before saving.
     func acceptFlaggedDuplicate(_ flagged: FlaggedDuplicate) {
-        // Delete the existing game.
-        deleteGame(flagged.existingGameId)
-        // Build and add the new game.
-        let game = AttendedGame(
-            id: UUID(),
-            date: flagged.candidateDate,
-            ballparkId: flagged.candidateBallparkId,
-            homeTeamId: flagged.candidateHomeTeamId,
-            awayTeamId: flagged.candidateAwayTeamId,
-            homeScore: 0, awayScore: 0,
-            userRootedForHome: favoriteTeamId == flagged.candidateHomeTeamId ? true
-                : (favoriteTeamId == flagged.candidateAwayTeamId ? false : nil),
-            section: flagged.candidateSection,
-            row: flagged.candidateRow,
-            seat: flagged.candidateSeat,
-            confirmation: flagged.candidateConfirmation,
-            weather: .night,
-            firstPitchTempF: 0,
-            attendance: 0,
-            durationMinutes: 0,
-            highlights: [],
-            milestones: [],
-            pitching: [],
-            companions: "",
-            memory: "",
-            emailSubject: flagged.candidateSource,
-            source: flagged.candidateSource,
-            status: .upcoming,
-            isVerified: false
+        // Find the existing game and merge the candidate's seat details.
+        guard let existing = game(id: flagged.existingGameId) else {
+            flaggedDuplicates.removeAll { $0.id == flagged.id }
+            save()
+            return
+        }
+
+        // Merge seat info from the candidate if it has any.
+        let mergedSeat = existing.withSeat(
+            section: flagged.candidateSection.isEmpty ? existing.section : flagged.candidateSection,
+            row: flagged.candidateRow.isEmpty ? existing.row : flagged.candidateRow,
+            seat: flagged.candidateSeat.isEmpty ? existing.seat : flagged.candidateSeat
         )
-        addManualGame(game)
+
+        // Preserve the existing game's scores, status, enrichment, companions,
+        // and memory — only update seat and confirmation from the candidate.
+        var merged = AttendedGame(
+            id: mergedSeat.id, date: mergedSeat.date, ballparkId: mergedSeat.ballparkId,
+            homeTeamId: mergedSeat.homeTeamId, awayTeamId: mergedSeat.awayTeamId,
+            homeScore: mergedSeat.homeScore, awayScore: mergedSeat.awayScore,
+            userRootedForHome: mergedSeat.userRootedForHome,
+            section: mergedSeat.section, row: mergedSeat.row, seat: mergedSeat.seat,
+            confirmation: flagged.candidateConfirmation ?? mergedSeat.confirmation,
+            weather: mergedSeat.weather, firstPitchTempF: mergedSeat.firstPitchTempF,
+            attendance: mergedSeat.attendance, durationMinutes: mergedSeat.durationMinutes,
+            highlights: mergedSeat.highlights, milestones: mergedSeat.milestones,
+            pitching: mergedSeat.pitching,
+            companions: mergedSeat.companions, memory: mergedSeat.memory,
+            emailSubject: mergedSeat.emailSubject, source: mergedSeat.source,
+            status: mergedSeat.status, isVerified: mergedSeat.isVerified
+        )
+
+        // Try to re-verify against the MLB schedule if the game is completed
+        // and has valid team IDs.
+        if !merged.isUpcoming {
+            let homeMlbId = merged.homeTeam.mlbId
+            let awayMlbId = merged.awayTeam.mlbId
+            if homeMlbId > 0 {
+                Task { @MainActor in
+                    if let results = try? await MLBStatsService.shared.games(on: merged.date, teamMlbId: homeMlbId) {
+                        let match = results.first {
+                            ($0.homeMlbId == homeMlbId && $0.awayMlbId == awayMlbId) ||
+                            ($0.awayMlbId == homeMlbId && $0.homeMlbId == awayMlbId)
+                        }
+                        if let match, match.isFinal,
+                           let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
+                            merged = merged.enriched(with: details)
+                        }
+                    }
+                    // Update the existing game in place.
+                    self.replaceGame(merged)
+                    self.flaggedDuplicates.removeAll { $0.id == flagged.id }
+                    self.save()
+                }
+                return
+            }
+        }
+
+        // No re-verification — just update the existing game.
+        replaceGame(merged)
         flaggedDuplicates.removeAll { $0.id == flagged.id }
         save()
+    }
+
+    /// Replace a game in-place by ID, preserving its inbox location.
+    private func replaceGame(_ updated: AttendedGame) {
+        for (inboxId, list) in gamesByInbox {
+            guard let index = list.firstIndex(where: { $0.id == updated.id }) else { continue }
+            var newList = list
+            newList[index] = updated
+            gamesByInbox[inboxId] = newList.sorted { $0.date > $1.date }
+            return
+        }
     }
 
     /// Toggle automatic duplicate deletion. When on, near-duplicates are
@@ -900,17 +1012,28 @@ final class DiaryStore {
             lastRefreshAt = .now
         }
 
+        var hadNetworkError = false
         let imported = await importSharedTickets()
-        await refreshUpcomingScores()
-        await enrichExistingGames()
-        await reVerifyUnverifiedGames()
+        await refreshUpcomingScores(&hadNetworkError)
+        await enrichExistingGames(&hadNetworkError)
+        await reVerifyUnverifiedGames(&hadNetworkError)
+
+        if hadNetworkError {
+            lastRefreshError = "Couldn't reach MLB Stats — pull to retry"
+        } else {
+            lastRefreshError = nil
+        }
         
         // If there are still upcoming games, schedule an extra check
         // a few minutes later to catch scores that post after the game.
         if !upcomingGames.isEmpty {
-            Task { @MainActor in
+            // Cancel any previous follow-up before scheduling a new one.
+            followUpRefreshTask?.cancel()
+            followUpRefreshTask = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(180))
-                await refreshUpcomingScores()
+                guard !Task.isCancelled else { return }
+                var dummy = false
+                await refreshUpcomingScores(&dummy)
                 save()
             }
         }
@@ -1037,7 +1160,7 @@ final class DiaryStore {
 
     /// Re-check every upcoming game against the MLB schedule; promote any that
     /// have since finished to a completed game with the real final score.
-    private func refreshUpcomingScores() async {
+    private func refreshUpcomingScores(_ hadNetworkError: inout Bool) async {
         var didChange = false
         for (inboxId, list) in gamesByInbox {
             var updated = list
@@ -1045,7 +1168,9 @@ final class DiaryStore {
                 let teamMlbId = game.homeTeam.mlbId
                 let opponentMlbId = game.awayTeam.mlbId
                 guard teamMlbId > 0 else { continue }
-                guard let results = try? await MLBStatsService.shared.games(on: game.date, teamMlbId: teamMlbId) else {
+                let resultsResult = try? await MLBStatsService.shared.games(on: game.date, teamMlbId: teamMlbId)
+                guard let results = resultsResult else {
+                    hadNetworkError = true
                     continue
                 }
                 let match = results.first {
@@ -1070,7 +1195,7 @@ final class DiaryStore {
     /// Backfill verified facts, highlights and milestones for finished games that
     /// were imported before enrichment existed (or whose detail fetch failed).
     /// Runs on pull-to-refresh so older diary entries gain real box-score data.
-    private func enrichExistingGames() async {
+    private func enrichExistingGames(_ hadNetworkError: inout Bool) async {
         var didChange = false
         for (inboxId, list) in gamesByInbox {
             var updated = list
@@ -1078,7 +1203,9 @@ final class DiaryStore {
                 let teamMlbId = game.homeTeam.mlbId
                 let opponentMlbId = game.awayTeam.mlbId
                 guard teamMlbId > 0 else { continue }
-                guard let results = try? await MLBStatsService.shared.games(on: game.date, teamMlbId: teamMlbId) else {
+                let resultsResult = try? await MLBStatsService.shared.games(on: game.date, teamMlbId: teamMlbId)
+                guard let results = resultsResult else {
+                    hadNetworkError = true
                     continue
                 }
                 let match = results.first {
@@ -1099,7 +1226,7 @@ final class DiaryStore {
     /// Re-verify unverified manual games. On pull-to-refresh, any unverified
     /// manual entry gets checked against the real schedule. If found, it's
     /// updated with the actual box score data and flipped to verified.
-    private func reVerifyUnverifiedGames() async {
+    private func reVerifyUnverifiedGames(_ hadNetworkError: inout Bool) async {
         var didChange = false
         for (inboxId, list) in gamesByInbox {
             var updated = list
@@ -1107,7 +1234,9 @@ final class DiaryStore {
                 let homeMlbId = game.homeTeam.mlbId
                 let awayMlbId = game.awayTeam.mlbId
                 guard homeMlbId > 0 else { continue }
-                guard let results = try? await MLBStatsService.shared.games(on: game.date, teamMlbId: homeMlbId) else {
+                let resultsResult = try? await MLBStatsService.shared.games(on: game.date, teamMlbId: homeMlbId)
+                guard let results = resultsResult else {
+                    hadNetworkError = true
                     continue
                 }
                 let match = results.first {
@@ -1245,6 +1374,95 @@ final class DiaryStore {
         hasAcceptedTerms = false
         defaults.removeObject(forKey: storageKey)
         defaults.removeObject(forKey: autoDeleteKey)
+        try? FileManager.default.removeItem(at: diaryFileURL)
+    }
+
+    // MARK: - Export / Import
+
+    /// Export the diary as a JSON data blob for backup or transfer.
+    func exportData() -> Data? {
+        let snapshot = Snapshot(
+            schemaVersion: Self.currentSchemaVersion,
+            favoriteTeamId: favoriteTeamId,
+            hasPickedFavorite: hasPickedFavorite,
+            hasCompletedOnboarding: hasCompletedOnboarding,
+            hasAcceptedTerms: hasAcceptedTerms,
+            inboxes: connectedInboxes,
+            gamesByInbox: Dictionary(uniqueKeysWithValues: gamesByInbox.map { ($0.key.uuidString, $0.value) }),
+            droppedCandidates: droppedCandidates,
+            flaggedDuplicates: flaggedDuplicates
+        )
+        return try? JSONEncoder().encode(snapshot)
+    }
+
+    /// Import a diary JSON blob, merging games by canonical key (dedup).
+    /// Returns the number of newly imported games.
+    @discardableResult
+    func importData(_ data: Data) -> Int {
+        guard let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return 0 }
+        var existingKeys = Set(games.map(canonicalKey))
+        var newCount = 0
+        for (key, games) in snapshot.gamesByInbox {
+            guard let inboxId = UUID(uuidString: key) else { continue }
+            var existing = gamesByInbox[inboxId] ?? []
+            for game in games {
+                let ck = canonicalKey(game)
+                guard !existingKeys.contains(ck) else { continue }
+                existingKeys.insert(ck)
+                existing.append(game)
+                newCount += 1
+            }
+            gamesByInbox[inboxId] = existing.sorted { $0.date > $1.date }
+        }
+        // Merge inboxes that don't already exist.
+        for inbox in snapshot.inboxes where !connectedInboxes.contains(where: { $0.id == inbox.id }) {
+            connectedInboxes.append(inbox)
+        }
+        if newCount > 0 { save() }
+        return newCount
+    }
+
+    /// Season recap data for "Ballpark Wrapped" — per-year stats summary.
+    struct SeasonRecap: Identifiable {
+        let year: Int
+        let gameCount: Int
+        let wins: Int
+        let losses: Int
+        let parksVisited: Int
+        let totalMinutes: Int
+        let topMilestone: String?
+        let bestGame: AttendedGame?
+
+        var id: Int { year }
+
+        var winPct: Double {
+            let total = wins + losses
+            guard total > 0 else { return 0 }
+            return Double(wins) / Double(total)
+        }
+    }
+
+    /// Build per-year season recaps for Ballpark Wrapped.
+    var seasonRecaps: [SeasonRecap] {
+        let grouped = Dictionary(grouping: completedGames) {
+            Calendar.current.component(.year, from: $0.date)
+        }
+        return grouped.map { year, games in
+            let rooted = games.filter { $0.userRootedForHome != nil }
+            let wins = rooted.filter(\.userWon).count
+            let losses = rooted.count - wins
+            let parks = Set(games.map(\.ballparkId)).count
+            let minutes = games.reduce(0) { $0 + $1.durationMinutes }
+            let milestone = games.flatMap(\.milestones).first
+            let bestGame = games.sorted { $0.totalRuns > $1.totalRuns }.first
+            return SeasonRecap(
+                year: year, gameCount: games.count,
+                wins: wins, losses: losses,
+                parksVisited: parks, totalMinutes: minutes,
+                topMilestone: milestone.map { "\($0.title) — \($0.playerName)" },
+                bestGame: bestGame
+            )
+        }.sorted { $0.year > $1.year }
     }
 
     // MARK: - Dedup on launch
@@ -1299,6 +1517,7 @@ final class DiaryStore {
     // MARK: - Persistence
 
     private struct Snapshot: Codable {
+        var schemaVersion: Int?
         var favoriteTeamId: String
         var hasPickedFavorite: Bool
         var hasCompletedOnboarding: Bool
@@ -1309,8 +1528,17 @@ final class DiaryStore {
         var flaggedDuplicates: [FlaggedDuplicate]
     }
 
+    /// Current schema version — bumped when the Snapshot format changes.
+    private static let currentSchemaVersion: Int = 2
+
     private func save() {
+        // Invalidate memoized stats caches — data changed.
+        cachedAchievementList = nil
+        cachedMilesTraveled = nil
+        cachedVisitedParkSequence = nil
+
         let snapshot = Snapshot(
+            schemaVersion: Self.currentSchemaVersion,
             favoriteTeamId: favoriteTeamId,
             hasPickedFavorite: hasPickedFavorite,
             hasCompletedOnboarding: hasCompletedOnboarding,
@@ -1321,28 +1549,55 @@ final class DiaryStore {
             flaggedDuplicates: flaggedDuplicates
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        defaults.set(data, forKey: storageKey)
+        // Atomic write to the file in Application Support.
+        do {
+            try data.write(to: diaryFileURL, options: .atomic)
+        } catch {
+            // Fallback to UserDefaults if the file write fails.
+            defaults.set(data, forKey: storageKey)
+        }
     }
 
     private func load() {
-        guard
-            let data = defaults.data(forKey: storageKey),
-            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
-        else {
-            // First launch or failed decode — normal for fresh installs.
-            // Data survives app updates because UserDefaults is preserved
-            // across App Store updates. The storageKey must never change.
-            return
+        // 1. Try reading from the file in Application Support.
+        if let data = try? Data(contentsOf: diaryFileURL) {
+            if let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
+                applySnapshot(snapshot)
+                return
+            } else {
+                // File exists but is corrupt — back it up before overwriting.
+                let backupURL = diaryFileURL.deletingPathExtension().appendingPathExtension("corrupt-backup.json")
+                try? FileManager.default.removeItem(at: backupURL)
+                try? FileManager.default.copyItem(at: diaryFileURL, to: backupURL)
+            }
         }
-        // Migrate: ensure older saves that predate hasAcceptedTerms don't lose
-        // onboarding progress just because the field was added later.
+
+        // 2. One-time migration from UserDefaults to the file.
+        if let data = defaults.data(forKey: storageKey) {
+            if let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
+                applySnapshot(snapshot)
+                // Write to the new file location and keep the old UserDefaults
+                // blob as a backup (don't delete it — it's the safety net).
+                if let encoded = try? JSONEncoder().encode(snapshot) {
+                    try? encoded.write(to: diaryFileURL, options: .atomic)
+                }
+                return
+            } else {
+                // UserDefaults blob is corrupt — copy to a recovery key.
+                defaults.set(data, forKey: "ballparkdiary.state.v2.corrupt-backup")
+            }
+        }
+
+        // 3. First launch or all sources failed — fresh state.
+    }
+
+    /// Apply a decoded snapshot to the store's properties.
+    private func applySnapshot(_ snapshot: Snapshot) {
         favoriteTeamId = snapshot.favoriteTeamId
         hasPickedFavorite = snapshot.hasPickedFavorite
         hasCompletedOnboarding = snapshot.hasCompletedOnboarding
         hasAcceptedTerms = snapshot.hasAcceptedTerms
         connectedInboxes = snapshot.inboxes
-        // Use uniquingKeysWith to safely handle any accidental duplicates
-        // instead of crashing on Dictionary(uniqueKeysWithValues:).
         let pairs: [(UUID, [AttendedGame])] = snapshot.gamesByInbox.compactMap { key, value in
             UUID(uuidString: key).map { ($0, value) }
         }

@@ -30,11 +30,20 @@ nonisolated enum SharedTicketStore {
         UserDefaults(suiteName: appGroup)
     }
 
-    /// Append a newly shared ticket to the queue.
+    /// Maximum text payload size — guards against oversized share inputs.
+    static let maxPayloadBytes: Int = 64_000
+
+    /// Append a newly shared ticket to the queue. Text payloads are capped
+    /// at 64 KB to prevent oversized inputs from bloating App Group storage.
     static func append(_ payload: SharedTicketPayload) {
         guard let defaults else { return }
+        let cappedText = String(payload.text.prefix(maxPayloadBytes / 4))
+        let safe = SharedTicketPayload(
+            id: payload.id, text: cappedText,
+            sourceHint: payload.sourceHint, receivedAt: payload.receivedAt
+        )
         var current = load()
-        current.append(payload)
+        current.append(safe)
         if let data = try? JSONEncoder().encode(current) {
             defaults.set(data, forKey: key)
         }

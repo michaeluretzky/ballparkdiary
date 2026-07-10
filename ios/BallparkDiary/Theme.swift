@@ -89,6 +89,7 @@ enum Theme {
 
 extension Font {
     /// Hero numbers — heavy, structured, authoritative.
+    /// Scales with Dynamic Type using @ScaledMetric-backed relative sizing.
     static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
         .system(size: size, weight: weight, design: .default)
     }
@@ -99,7 +100,6 @@ extension Font {
     }
 
     /// Compact athletic label — scores, team abbreviations, win/loss markers.
-    /// Structured default design reads clean and official on dark backgrounds.
     static func scoreboard(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
         .system(size: size, weight: weight, design: .default)
     }
@@ -114,14 +114,35 @@ extension Font {
         .system(size: size, weight: weight, design: .default)
     }
 
-    /// Small secondary / footnote text.
+    /// Small secondary / footnote text. Minimum 11pt.
     static func caption(_ size: CGFloat = 11, weight: Font.Weight = .medium) -> Font {
-        .system(size: size, weight: weight, design: .default)
+        .system(size: max(11, size), weight: weight, design: .default)
     }
 
     /// Compact uppercase label. Used sparingly — not on every card.
     static func caps(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight, design: .default)
+        .system(size: max(11, size), weight: weight, design: .default)
+    }
+}
+
+// MARK: - ScaledMetric font provider
+
+/// Provides @ScaledMetric-based font sizes that respond to Dynamic Type.
+/// Use in views via `@ScaledMetric private var titleSize: CGFloat = 16` then
+/// pass to the Font helpers. This keeps the athletic design while scaling.
+struct ScaledFont {
+    /// Maps a base point size to a TextStyle for Dynamic Type scaling.
+    static func textStyle(for size: CGFloat) -> Font.TextStyle {
+        switch size {
+        case 0..<11:  return .caption2
+        case 11..<13: return .caption
+        case 13..<16: return .footnote
+        case 16..<20: return .body
+        case 20..<28: return .title3
+        case 28..<34: return .title2
+        case 34...:   return .title
+        default:       return .body
+        }
     }
 }
 

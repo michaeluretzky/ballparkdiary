@@ -2,14 +2,14 @@ import Foundation
 import Observation
 import RevenueCat
 
-/// Central entitlement state for Ballpark Diary Pro ($9.99 lifetime).
+/// Central entitlement state for Ballpark Diary Pro.
 /// Owns the current offering, purchase/restore flows, and the live
 /// `premium` entitlement status sourced from RevenueCat's customer-info stream.
 ///
-/// A debug override (UserDefaults "bp_debug_pro") lets developers manually
-/// toggle Pro access. When enabled, it short-circuits the RevenueCat check
-/// and treats the user as Pro regardless of purchase status. The override
-/// only appears in the UI after a long-press gesture on the Profile screen.
+/// In DEBUG builds, a debug override (UserDefaults "bp_debug_pro") lets
+/// developers manually toggle Pro access. In RELEASE builds this key is
+/// actively deleted on init and isPremium derives ONLY from RevenueCat's
+/// server-validated entitlement.
 @Observable
 @MainActor
 final class StoreViewModel {
@@ -18,12 +18,17 @@ final class StoreViewModel {
     var isPurchasing: Bool = false
     var error: String?
 
+    #if DEBUG
     /// True when the debug pro override has been manually enabled.
     private(set) var debugProEnabled: Bool = false
+    #endif
 
-    /// Effective premium status — respects RevenueCat OR the debug override.
+    /// Effective premium status. In release, derives ONLY from RevenueCat's
+    /// server-validated entitlement. In debug, also respects the manual override.
     var isPremium: Bool {
+        #if DEBUG
         if debugProEnabled { return true }
+        #endif
         return revenueCatPremium
     }
 
@@ -33,8 +38,14 @@ final class StoreViewModel {
     private let defaults = UserDefaults.standard
 
     init() {
+        #if DEBUG
         // Load any persisted debug override before RevenueCat starts streaming.
         debugProEnabled = defaults.bool(forKey: debugKey)
+        #else
+        // Release: actively delete any stale debug key so jailbroken / crafted
+        // backups can't flip lifetime Pro.
+        defaults.removeObject(forKey: "bp_debug_pro")
+        #endif
         // Defer async work slightly so RevenueCat has time to configure.
         // Purchases.configure() in BallparkDiaryApp.init() runs after property
         // initializers, so we schedule our tasks on the next run loop.
@@ -48,12 +59,14 @@ final class StoreViewModel {
         }
     }
 
+    #if DEBUG
     /// Toggle the debug pro override. Persisted to UserDefaults so it
     /// survives app restarts. Call this from the developer section in Profile.
     func toggleDebugPro() {
         debugProEnabled.toggle()
         defaults.set(debugProEnabled, forKey: debugKey)
     }
+    #endif
 
     private func listenForUpdates() async {
         for await info in Purchases.shared.customerInfoStream {

@@ -1,17 +1,16 @@
 import SwiftUI
 
 /// A team-colored circular badge showing the official MLB team logo
-/// loaded from the league's CDN, encircled in the team's primary and
-/// secondary colors. Falls back to the cap letter mark if the logo
-/// fails to load.
+/// loaded from the league's raster CDN endpoint, encircled in the team's
+/// primary and secondary colors. Falls back to the cap letter mark if the
+/// logo fails to load. Uses AsyncImage with a shared URLCache instead of
+/// WKWebView for performance and security.
 struct TeamLogoView: View {
     let team: Team
     var size: CGFloat = 56
     var showGloss: Bool = true
 
     @State private var imageLoadFailed = false
-    @State private var imageLoaded = false
-    @State private var hasAppeared = false
 
     private var lineWidth: CGFloat { max(1.5, size * 0.035) }
     private var innerPadding: CGFloat { size * 0.18 }
@@ -45,7 +44,7 @@ struct TeamLogoView: View {
                     lineWidth: lineWidth
                 )
 
-            // Subtle light backing so dark SVG logos stay visible against dark
+            // Subtle light backing so dark logos stay visible against dark
             // primary-colored circles (e.g. Yankees navy "NY" on navy circle).
             Circle()
                 .fill(Color.white.opacity(0.18))
@@ -56,17 +55,29 @@ struct TeamLogoView: View {
                 .blur(radius: 4)
                 .allowsHitTesting(false)
 
-            // Official team logo from MLB CDN, or fallback letter mark.
-            // Defer WKWebView creation until the view has appeared on screen
-            // to avoid crashes from rapid init/destroy cycles (e.g. StatsView).
-            if !imageLoadFailed, let url = team.logoURL, hasAppeared {
-                SVGWebView(url: url, onLoaded: { imageLoaded = true }, onFailed: { imageLoadFailed = true })
-                    .frame(
-                        width: size - innerPadding * 2,
-                        height: size - innerPadding * 2
-                    )
-                    .opacity(imageLoaded ? 1 : 0)
-                    .allowsHitTesting(false)
+            // Official team logo from MLB raster CDN via AsyncImage, or
+            // fallback letter mark on failure.
+            if !imageLoadFailed, let url = team.logoSpotURL(size: size) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                    case .failure:
+                        Color.clear
+                            .onAppear { imageLoadFailed = true }
+                    case .empty:
+                        Color.clear
+                    @unknown default:
+                        Color.clear
+                    }
+                }
+                .frame(
+                    width: size - innerPadding * 2,
+                    height: size - innerPadding * 2
+                )
+                .allowsHitTesting(false)
             } else {
                 fallbackLetterMark
             }
@@ -89,12 +100,7 @@ struct TeamLogoView: View {
         }
         .frame(width: size, height: size)
         .contentShape(.circle)
-        .onAppear {
-            // Small delay lets the layout settle before creating WKWebView.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                hasAppeared = true
-            }
-        }
+        .accessibilityHidden(true)
     }
 
     // MARK: - Fallback
@@ -116,6 +122,20 @@ struct TeamLogoView: View {
         default: return size * 0.28
         }
     }
+}
+
+// MARK: - Shared URLCache for team logos
+
+/// A shared URLCache for team logo images — memory + disk backed so logos
+/// are cached across views and app launches without re-downloading.
+enum TeamLogoCache {
+    static let shared: URLCache = {
+        let memoryCapacity = 20 * 1024 * 1024  // 20 MB memory
+        let diskCapacity = 50 * 1024 * 1024     // 50 MB disk
+        let cache = URLCache(memoryCapacity: memoryCapacity, diskCapacity: diskCapacity, diskPath: "team-logos")
+        URLCache.shared = cache
+        return cache
+    }()
 }
 
 // MARK: - Convenience

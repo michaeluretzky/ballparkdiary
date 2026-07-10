@@ -8,7 +8,7 @@ struct ManualGameEntryView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    @State private var date: Date = Calendar.current.date(byAdding: .year, value: -10, to: .now) ?? .now
+    @State private var date: Date = .now
     @State private var ballparkId: String = Ballpark.all[0].id
     @State private var homeTeamId: String = ""
     @State private var awayTeamId: String = Team.redSox.id
@@ -170,7 +170,7 @@ struct ManualGameEntryView: View {
                                 VStack(spacing: 8) {
                                     LabeledInput(label: "Went with", text: $companions)
                                         .focused($focusedField, equals: .companions)
-                                    LabeledInput(label: "Notes", text: $memory)
+                                    LabeledInput(label: "Notes", text: $memory, multiline: true, autocap: false)
                                         .focused($focusedField, equals: .memory)
                                 }
                             }
@@ -331,12 +331,21 @@ struct ManualGameEntryView: View {
             return
         }
 
-        let enrichedGame: AttendedGame
+        var enrichedGame: AttendedGame
         if !baseGame.isUpcoming, let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
             enrichedGame = baseGame.enriched(with: details)
         } else {
             enrichedGame = baseGame
         }
+
+        // Preserve the user's explicit choices — AttendedGame.from ignores
+        // the form's rooting, companions, and memory fields.
+        let userRoot: Bool? = userRootedForNeither ? nil : userRootedForHome
+        enrichedGame = enrichedGame.rooting(forHome: userRoot)
+        enrichedGame = enrichedGame.withMemory(
+            companions: companions.trimmingCharacters(in: .whitespaces),
+            memory: memory.trimmingCharacters(in: .whitespaces)
+        )
 
         // Build an appropriate notice
         let notice: String?
@@ -390,9 +399,9 @@ struct ManualGameEntryView: View {
             seat: seat.isEmpty ? "—" : seat,
             confirmation: nil,
             weather: weather,
-            firstPitchTempF: isVerified ? 72 : 72,
-            attendance: isVerified ? ballpark.capacity : ballpark.capacity,
-            durationMinutes: isVerified ? 180 : 180,
+            firstPitchTempF: 0,
+            attendance: 0,
+            durationMinutes: 0,
             highlights: [],
             milestones: [],
             pitching: [],
@@ -732,6 +741,8 @@ private struct StepperButton: View {
 struct LabeledInput: View {
     let label: String
     @Binding var text: String
+    var multiline: Bool = false
+    var autocap: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -739,16 +750,30 @@ struct LabeledInput: View {
                 .font(.caps(9, weight: .heavy))
                 .tracking(1.6)
                 .foregroundStyle(Theme.textMuted)
-            TextField("—", text: $text)
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled(true)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Theme.cardElevated)
-                )
-                .foregroundStyle(Theme.textPrimary)
+            if multiline {
+                TextField("—", text: $text, axis: .vertical)
+                    .lineLimit(3...8)
+                    .textInputAutocapitalization(autocap ? .sentences : .characters)
+                    .autocorrectionDisabled(!autocap)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Theme.cardElevated)
+                    )
+                    .foregroundStyle(Theme.textPrimary)
+            } else {
+                TextField("—", text: $text)
+                    .textInputAutocapitalization(autocap ? .characters : .none)
+                    .autocorrectionDisabled(true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Theme.cardElevated)
+                    )
+                    .foregroundStyle(Theme.textPrimary)
+            }
         }
     }
 }

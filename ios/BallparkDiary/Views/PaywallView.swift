@@ -10,12 +10,10 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let perks: [Perk] = [
-        Perk(symbol: "tray.full.fill", title: "Unlimited inboxes", detail: "Pull tickets from Gmail, iCloud, Outlook and more"),
-        Perk(symbol: "sparkles", title: "Ballpark Wrapped", detail: "A season recap worth sharing, every year"),
+        Perk(symbol: "chart.bar.xaxis", title: "Player milestones & box scores", detail: "Career home runs, no-hitters, complete games — the moments you witnessed"),
         Perk(symbol: "square.and.arrow.up.fill", title: "Shareable game cards", detail: "Turn any game into a card to post or send"),
-        Perk(symbol: "map.fill", title: "Ballpark quest & travel map", detail: "See all 30 parks and the miles you've logged"),
-        Perk(symbol: "camera.fill", title: "Camera ticket scanning", detail: "Snap a paper stub and save the memory"),
-        Perk(symbol: "chart.bar.xaxis", title: "Deep box-score data", detail: "Player milestones and the plays worth remembering")
+        Perk(symbol: "map.fill", title: "30-Ballpark Quest card", detail: "Track your progress toward all 30 MLB parks"),
+        Perk(symbol: "rosette", title: "Pro achievement badges", detail: "Unlock division, rivalry, and road-warrior badges")
     ]
 
     var body: some View {

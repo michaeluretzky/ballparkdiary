@@ -16,6 +16,20 @@ struct Team: Identifiable, Hashable {
 }
 
 extension Team {
+    /// A team color suitable for rendering text, icons, and rules on the
+    /// app's dark night surfaces. If the primary color is too dark to be
+    /// visible (luminance < 0.18), use the secondary if it's noticeably
+    /// brighter, otherwise lighten the primary by 35%.
+    var accentOnDark: Color {
+        let pLum = primary.luminance
+        if pLum < 0.18 {
+            let sLum = secondary.luminance
+            if sLum > pLum + 0.08 { return secondary }
+            return primary.lightened(by: 0.35)
+        }
+        return primary
+    }
+
     /// Returns a fill color for the logo circle that stays visible against
     /// the app's dark night background. Teams with dark primary colors
     /// (e.g. Yankees navy, White Sox black) use their brighter secondary
@@ -116,6 +130,13 @@ extension Team {
     /// URL for the team's full logo SVG from MLB's official CDN.
     var logoURL: URL? {
         URL(string: "https://www.mlbstatic.com/team-logos/\(mlbId).svg")
+    }
+
+    /// URL for the team's raster logo spot from MLB's CDN — preferred over SVG
+    /// because it loads via AsyncImage with native caching instead of WKWebView.
+    func logoSpotURL(size: CGFloat) -> URL? {
+        let pixelSize = Int(size * UIScreen.main.scale)
+        return URL(string: "https://midfield.mlbstatic.com/v1/team/\(mlbId)/spots/\(pixelSize)")
     }
 
     /// Reverse lookup: find a team from its MLB Stats API numeric id.

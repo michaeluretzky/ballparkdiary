@@ -12,6 +12,32 @@ struct StatsView: View {
                 Theme.nightGradient.ignoresSafeArea()
                 Theme.nightVignette.ignoresSafeArea()
 
+                if store.completedGames.isEmpty {
+                    VStack(spacing: 24) {
+                        Spacer().frame(height: 20)
+                        ZStack {
+                            Circle()
+                                .fill(Theme.clay.opacity(0.1))
+                                .frame(width: 120, height: 120)
+                                .blur(radius: 24)
+                            BaseballMark(size: 72)
+                                .shadow(color: Theme.clay.opacity(0.3), radius: 16, y: 6)
+                        }
+                        VStack(spacing: 10) {
+                            Text("Your stats will show up here.")
+                                .font(.scoreboard(22, weight: .black))
+                                .foregroundStyle(Theme.textPrimary)
+                            Text("Once you log a game, you'll see your record, ballpark progress, achievements, and a whole lot more.")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Theme.textSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                                .lineSpacing(3)
+                        }
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
                 ScrollView {
                     VStack(spacing: 18) {
                         // Hero
@@ -71,6 +97,7 @@ struct StatsView: View {
                     }
                     .padding(.top, 8)
                 }
+                }
             }
             .navigationTitle("Stats")
             .navigationBarTitleDisplayMode(.large)
@@ -90,15 +117,13 @@ struct StatsView: View {
 
 private struct HeroSummary: View {
     @Environment(DiaryStore.self) private var store
-    private var tc: TeamColors { .from(team: store.favoriteTeam) }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Lifetime")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(tc.primary)
+                        .foregroundStyle(store.favoriteTeam.accentOnDark)
                     Text("\(store.totalGames) games")
                         .font(.scoreboard(34, weight: .black))
                         .foregroundStyle(Theme.textPrimary)
@@ -108,7 +133,7 @@ private struct HeroSummary: View {
                 }
                 Spacer()
                 BaseballMark(size: 56)
-                    .shadow(color: tc.primary.opacity(0.4), radius: 10)
+                    .shadow(color: store.favoriteTeam.accentOnDark.opacity(0.4), radius: 10)
             }
 
             HStack(spacing: 12) {
@@ -121,7 +146,7 @@ private struct HeroSummary: View {
         .nightCard()
         .overlay(alignment: .topLeading) {
             Rectangle()
-                .fill(tc.primary)
+                .fill(store.favoriteTeam.accentOnDark)
                 .frame(width: 36, height: 3)
                 .clipShape(.capsule)
                 .offset(y: -1.5)
@@ -232,6 +257,8 @@ private struct RecordCard: View {
     @Environment(DiaryStore.self) private var store
     @State private var animateBar: Bool = false
 
+    private var hasRootedGames: Bool { !store.rootedGames.isEmpty }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
@@ -239,58 +266,71 @@ private struct RecordCard: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
-                Text(percentString)
-                    .font(.stat(13, weight: .heavy))
-                    .foregroundStyle(Theme.lights)
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                VStack(alignment: .leading) {
-                    Text("\(store.winCount)")
-                        .font(.scoreboard(44, weight: .black))
-                        .foregroundStyle(Theme.grass)
-                    Text("W")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.textMuted)
-                }
-                Text("–")
-                    .font(.scoreboard(28, weight: .black))
-                    .foregroundStyle(Theme.textMuted)
-                VStack(alignment: .leading) {
-                    Text("\(store.lossCount)")
-                        .font(.scoreboard(44, weight: .black))
-                        .foregroundStyle(Theme.foul)
-                    Text("L")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.textMuted)
-                }
-                Spacer()
-                VStack(alignment: .trailing) {
-                    Text("\(store.longestStreak)")
-                        .font(.scoreboard(28, weight: .black))
+                if hasRootedGames {
+                    Text(percentString)
+                        .font(.stat(13, weight: .heavy))
                         .foregroundStyle(Theme.lights)
-                    Text("Best streak")
-                        .font(.system(size: 10, weight: .semibold))
+                } else {
+                    Text("No rooted games yet")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Theme.textMuted)
                 }
             }
 
-            GeometryReader { geo in
-                let totalWidth = geo.size.width
-                let winRatio = store.completedGames.isEmpty ? 0 : Double(store.winCount) / Double(store.completedGames.count)
-                let winWidth = totalWidth * (animateBar ? winRatio : 0)
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.foul.opacity(0.85))
-                    Capsule()
-                        .fill(LinearGradient(colors: [Theme.grass, Theme.grass.opacity(0.85)], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: winWidth)
+            if hasRootedGames {
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    VStack(alignment: .leading) {
+                        Text("\(store.winCount)")
+                            .font(.scoreboard(44, weight: .black))
+                            .foregroundStyle(Theme.grass)
+                        Text("W")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    Text("–")
+                        .font(.scoreboard(28, weight: .black))
+                        .foregroundStyle(Theme.textMuted)
+                    VStack(alignment: .leading) {
+                        Text("\(store.lossCount)")
+                            .font(.scoreboard(44, weight: .black))
+                            .foregroundStyle(Theme.foul)
+                        Text("L")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing) {
+                        Text("\(store.longestStreak)")
+                            .font(.scoreboard(28, weight: .black))
+                            .foregroundStyle(Theme.lights)
+                        Text("Best streak")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
                 }
-            }
-            .frame(height: 8)
-            .onAppear {
-                withAnimation(.spring(response: 0.9, dampingFraction: 0.85).delay(0.1)) {
-                    animateBar = true
+
+                GeometryReader { geo in
+                    let totalWidth = geo.size.width
+                    let winRatio = store.rootedGames.isEmpty ? 0 : Double(store.winCount) / Double(store.rootedGames.count)
+                    let winWidth = totalWidth * (animateBar ? winRatio : 0)
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.foul.opacity(0.85))
+                        Capsule()
+                            .fill(LinearGradient(colors: [Theme.grass, Theme.grass.opacity(0.85)], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: winWidth)
+                    }
                 }
+                .frame(height: 8)
+                .onAppear {
+                    withAnimation(.spring(response: 0.9, dampingFraction: 0.85).delay(0.1)) {
+                        animateBar = true
+                    }
+                }
+            } else {
+                Text("Pick a team you rooted for on any game to start tracking your record.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(16)
@@ -841,7 +881,7 @@ private struct TimeWatchedCard: View {
             }
 
             if store.totalMinutesWatched > 0 {
-                let avgMin = store.totalMinutesWatched / max(1, store.completedGames.count)
+                let avgMin = store.totalMinutesWatched / max(1, store.completedGames.filter { $0.durationMinutes > 0 }.count)
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
                         .font(.system(size: 10, weight: .semibold))
@@ -1056,7 +1096,7 @@ private struct AchievementDetailSheet: View {
         case "duel":          return g.totalRuns <= 2
         case "shutout":       return g.homeScore == 0 || g.awayScore == 0
         case "slugfest":      return g.highlights.filter { $0.kind == .homeRun }.count >= 5
-        case "sunday":        return Calendar.current.component(.weekday, from: g.date) == 1
+        case "sunday":        return Calendar.current.component(.weekday, from: g.date) == 1 && (g.weather == .clear || g.weather == .partlyCloudy || g.weather == .cloudy)
         case "rain":          return g.weather == .rain
         // ── Win streaks ──
         case "streak", "streak5": return g.userWon

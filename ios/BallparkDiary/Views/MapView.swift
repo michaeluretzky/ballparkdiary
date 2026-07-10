@@ -19,7 +19,8 @@ struct MapView: View {
     @State private var discoveryFact: String = ""
 
     var body: some View {
-        ZStack(alignment: .top) {
+     NavigationStack {
+      ZStack(alignment: .top) {
             Map(position: $position, selection: Binding(get: { selected?.id }, set: { id in
                 if let id, let park = Ballpark.by(id: id) {
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
@@ -67,7 +68,7 @@ struct MapView: View {
 
                 // ── Division overlay labels ──
                 ForEach(divisionLabels, id: \.0) { name, center in
-                    Annotation(name, coordinate: center, anchor: .center) {
+                    Annotation("", coordinate: center, anchor: .center) {
                         Text(name)
                             .font(.caps(8, weight: .heavy))
                             .tracking(1.5)
@@ -151,6 +152,10 @@ struct MapView: View {
         .sheet(isPresented: $showPaywall) {
             PaywallView(store: storeKit)
         }
+     }
+     .navigationDestination(for: AttendedGame.self) { game in
+         GameDetailView(game: game)
+     }
     }
 
     private func visitCount(for park: Ballpark) -> Int {
@@ -307,10 +312,10 @@ private struct NextParkBanner: View {
                 HStack(spacing: 12) {
                     ZStack {
                         Circle()
-                            .fill(park.team.primary.opacity(0.2))
+                            .fill(park.team.accentOnDark.opacity(0.2))
                             .frame(width: 48, height: 48)
                         Circle()
-                            .strokeBorder(park.team.primary, lineWidth: 1.5)
+                            .strokeBorder(park.team.accentOnDark, lineWidth: 1.5)
                             .frame(width: 48, height: 48)
                         TeamLogoView(team: park.team, size: 36, showGloss: false)
                     }
@@ -387,7 +392,7 @@ private struct BallparkSnapshotCard: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 44, height: 44)
                         .background(Circle().fill(Color.white.opacity(0.06)))
                 }
                 .buttonStyle(.plain)

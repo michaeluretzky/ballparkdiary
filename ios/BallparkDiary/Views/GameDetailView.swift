@@ -6,60 +6,66 @@ import UIKit
 struct GameDetailView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(StoreViewModel.self) private var storeKit
+    @Environment(\.dismiss) private var dismiss
     let game: AttendedGame
     @State private var shareImage: Image? = nil
     @State private var shareImageData: Data? = nil
     @State private var showDeleteConfirm: Bool = false
     @State private var showPaywall: Bool = false
     @State private var showEditSheet: Bool = false
+    @State private var hasRenderedShareCard: Bool = false
     /// Timer-driven fact rotation for the BallparkPanel.
     @State private var factTimer: Timer? = nil
     @State private var factIndex: Int = 0
 
+    /// Always-fresh copy of this game from the store. Pass this to every
+    /// child panel so edits (seat, rooting, memory) are reflected immediately.
+    private var liveGame: AttendedGame { store.game(id: game.id) ?? game }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                Scoreboard(game: game)
+                Scoreboard(game: liveGame)
                     .padding(.horizontal, 16)
                     .padding(.top, 6)
 
-                TicketStubReal(game: game)
+                TicketStubReal(game: liveGame)
                     .padding(.horizontal, 16)
 
-                BallparkPanel(game: game, factIndex: $factIndex)
+                BallparkPanel(game: liveGame, factIndex: $factIndex)
                     .padding(.horizontal, 16)
 
-                if game.hasMemory {
-                    MemoryPanel(game: game)
+                if liveGame.hasMemory {
+                    MemoryPanel(game: liveGame)
                         .padding(.horizontal, 16)
                 }
 
-                if !game.milestones.isEmpty {
+                if !liveGame.milestones.isEmpty {
                     if storeKit.isPremium {
-                        MilestonesPanel(game: game)
+                        MilestonesPanel(game: liveGame)
                             .padding(.horizontal, 16)
                     } else {
-                        LockedMilestonesPanel(game: game, onUnlock: { showPaywall = true })
+                        LockedMilestonesPanel(game: liveGame, onUnlock: { showPaywall = true })
                             .padding(.horizontal, 16)
                     }
                 }
 
-                if !game.highlights.isEmpty {
-                    HighlightsPanel(game: game)
+                if !liveGame.highlights.isEmpty {
+                    HighlightsPanel(game: liveGame)
                         .padding(.horizontal, 16)
                 }
 
-                if !game.isUpcoming {
-                    FactsPanel(game: game)
+                if !liveGame.isUpcoming {
+                    FactsPanel(game: liveGame)
                         .padding(.horizontal, 16)
 
-                    if !game.pitching.isEmpty {
-                        PitchingPanel(game: game)
+                    if !liveGame.pitching.isEmpty {
+                        PitchingPanel(game: liveGame)
                             .padding(.horizontal, 16)
                     }
                 }
 
-                SourceRow(game: game)
+                SourceRow(game: liveGame)
                     .padding(.horizontal, 16)
 
                 Color.clear.frame(height: 30)
@@ -83,16 +89,20 @@ struct GameDetailView: View {
                         Image(systemName: "pencil")
                             .foregroundStyle(Theme.lights)
                     }
+                    .accessibilityLabel("Edit game")
                     if let shareImageData, let shareImage {
                         if storeKit.isPremium {
                             ShareLink(
                                 item: shareImageData,
-                                preview: SharePreview("\(game.awayTeam.fullName) @ \(game.homeTeam.fullName)", image: shareImage)
+                                preview: SharePreview("\(liveGame.awayTeam.fullName) @ \(liveGame.homeTeam.fullName)", image: shareImage)
                             ) {
                                 Image(systemName: "square.and.arrow.up")
                             }
                         } else {
-                            Button { showPaywall = true } label: {
+                            Button {
+                                renderShareCardIfNeeded()
+                                showPaywall = true
+                            } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "square.and.arrow.up")
                                         .font(.system(size: 14))
@@ -109,12 +119,14 @@ struct GameDetailView: View {
                         Image(systemName: "trash")
                             .foregroundStyle(Theme.foul.opacity(0.8))
                     }
+                    .accessibilityLabel("Delete game")
                 }
             }
         }
         .confirmationDialog("Remove this game from your diary?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 store.deleteGame(game.id)
+                dismiss()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -124,18 +136,20 @@ struct GameDetailView: View {
             PaywallView(store: storeKit)
         }
         .sheet(isPresented: $showEditSheet) {
-            EditGameSheet(game: game)
+            EditGameSheet(game: liveGame)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
-        .task { renderShareCard() }
         .onAppear { startFactTimer() }
         .onDisappear { factTimer?.invalidate() }
     }
 
+    /// Lazily render the share card only when the user first taps share.
     @MainActor
-    private func renderShareCard() {
-        let renderer = ImageRenderer(content: ShareableGameCard(game: game).frame(width: 360, height: 480))
+    internal func renderShareCardIfNeeded() {
+        guard !hasRenderedShareCard else { return }
+        hasRenderedShareCard = true
+        let renderer = ImageRenderer(content: ShareableGameCard(game: liveGame).frame(width: 360, height: 480))
         renderer.scale = UIScreen.main.scale
         if let uiImage = renderer.uiImage {
             shareImage = Image(uiImage: uiImage)
@@ -245,12 +259,14 @@ private struct Scoreboard: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
-                Image(systemName: game.weather.symbol)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Theme.lights)
-                Text("\(game.firstPitchTempF)°F")
-                    .font(.stat(11, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary)
+                if game.firstPitchTempF > 0 {
+                    Image(systemName: game.weather.symbol)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text("\(game.firstPitchTempF)°F")
+                        .font(.stat(11, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
             }
 
             HStack(spacing: 12) {
@@ -285,8 +301,8 @@ private struct Scoreboard: View {
                     Menu {
                         Picker("Rooted for", selection: Binding<Int>(
                             get: {
-                                if liveGame.userRootedForHome == nil { return 2 }
-                                return liveGame.userRootedForHome == true ? 0 : 1
+                                if game.userRootedForHome == nil { return 2 }
+                                return game.userRootedForHome == true ? 0 : 1
                             },
                             set: { val in
                                 switch val {
@@ -324,16 +340,6 @@ private struct Scoreboard: View {
         .nightCard()
     }
 
-    /// The live copy of this game from the store — always up to date.
-    private var liveGame: AttendedGame { store.game(id: game.id) ?? game }
-
-    private var rootedForBinding: Binding<Bool?> {
-        Binding(
-            get: { liveGame.userRootedForHome },
-            set: { store.setRootedForHome(game.id, rootedForHome: $0) }
-        )
-    }
-
     private var metaString: String {
         var parts: [String] = []
         if game.durationMinutes > 0 { parts.append(durationString) }
@@ -342,16 +348,16 @@ private struct Scoreboard: View {
     }
 
     private var resultColor: Color {
-        if liveGame.userRootedForHome == nil { return Theme.textMuted }
-        return liveGame.userWon ? Theme.grass : Theme.foul
+        if game.userRootedForHome == nil { return Theme.textMuted }
+        return game.userWon ? Theme.grass : Theme.foul
     }
 
     private var resultText: String {
-        if liveGame.userRootedForHome == nil {
+        if game.userRootedForHome == nil {
             return "NEUTRAL · JUST WATCHING"
         }
-        let team = liveGame.userRootedForHome == true ? game.homeTeam : game.awayTeam
-        let won = liveGame.userWon
+        let team = game.userRootedForHome == true ? game.homeTeam : game.awayTeam
+        let won = game.userWon
         return "\(won ? "WIN" : "LOSS") · ROOTED FOR \(team.fullName)"
     }
 
@@ -817,9 +823,15 @@ private struct FactsPanel: View {
                 .foregroundStyle(Theme.textSecondary)
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 Fact(label: "Total Runs", value: "\(game.totalRuns)")
-                Fact(label: "Attendance", value: game.attendance.formatted(.number))
-                Fact(label: "Duration", value: durationString)
-                Fact(label: "Weather", value: "\(game.weather.rawValue) · \(game.firstPitchTempF)°F")
+                if game.attendance > 0 {
+                    Fact(label: "Attendance", value: game.attendance.formatted(.number))
+                }
+                if game.durationMinutes > 0 {
+                    Fact(label: "Duration", value: durationString)
+                }
+                if game.firstPitchTempF > 0 {
+                    Fact(label: "Weather", value: "\(game.weather.rawValue) · \(game.firstPitchTempF)°F")
+                }
             }
         }
         .padding(16)
@@ -1080,9 +1092,9 @@ private struct SourceRow: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
+                .foregroundStyle(game.homeTeam.accentOnDark)
                 .frame(width: 30, height: 30)
-                .background(Circle().fill(TeamColors.from(team: game.homeTeam).primary.opacity(0.14)))
+                .background(Circle().fill(game.homeTeam.accentOnDark.opacity(0.14)))
             VStack(alignment: .leading, spacing: 1) {
                 Text(caption)
                     .font(.system(size: 10, weight: .semibold))
@@ -1230,7 +1242,7 @@ private struct EditGameSheet: View {
                                 .foregroundStyle(Theme.clay)
                             LabeledInput(label: "Went with", text: $companions)
                                 .focused($focusedField, equals: .comp)
-                            LabeledInput(label: "Notes", text: $memory)
+                            LabeledInput(label: "Notes", text: $memory, multiline: true, autocap: false)
                                 .focused($focusedField, equals: .mem)
                         }
                         .padding(14)

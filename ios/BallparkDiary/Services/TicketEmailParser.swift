@@ -45,10 +45,15 @@ nonisolated struct DetectedGame: Sendable, Hashable {
 /// schedule downstream. Pure value logic — no UI / model dependencies.
 nonisolated enum TicketEmailParser {
 
+    /// Maximum text size the parser will process — guards against oversized payloads.
+    static let maxParseBytes: Int = 64_000
+
     static func detect(in messages: [EmailMessage]) -> [DetectedGame] {
         var detected: [DetectedGame] = []
         for message in messages {
-            let haystack = "\(message.subject) \(message.snippet)"
+            // Cap the text before parsing to prevent oversized inputs.
+            let cappedSnippet = String(message.snippet.prefix(maxParseBytes / 4))
+            let haystack = "\(message.subject) \(cappedSnippet)"
             let teams = matchedTeams(in: haystack)
             guard let primary = teams.first else { continue }
 

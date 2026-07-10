@@ -245,6 +245,7 @@ private struct ShareStep: View {
 private struct InboxRow: View {
     @Environment(DiaryStore.self) private var store
     let inbox: ConnectedInbox
+    @State private var showRemoveConfirm: Bool = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -268,7 +269,7 @@ private struct InboxRow: View {
 
             Menu {
                 Button(role: .destructive) {
-                    store.disconnect(inbox)
+                    showRemoveConfirm = true
                 } label: {
                     Label("Remove source", systemImage: "trash")
                 }
@@ -283,6 +284,18 @@ private struct InboxRow: View {
         }
         .padding(14)
         .nightCard()
+        .confirmationDialog(
+            "Remove \(inbox.ticketsFound) \(inbox.ticketsFound == 1 ? "game" : "games")?",
+            isPresented: $showRemoveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Remove \(inbox.ticketsFound) \(inbox.ticketsFound == 1 ? "game" : "games")", role: .destructive) {
+                store.disconnect(inbox)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will delete all games from this source. This can't be undone.")
+        }
     }
 }
 
@@ -330,7 +343,7 @@ private struct ProUpgradeBanner: View {
                     Text("Ballpark Diary Pro")
                         .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Wrapped, share cards & more · $9.99 lifetime")
+                    Text("Milestones, share cards, badges & more")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(2)

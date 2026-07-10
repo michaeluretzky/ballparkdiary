@@ -126,11 +126,13 @@ private struct TeamPickerTile: View {
                     }
                 }
 
-                Text(team.fullName)
+                Text(team.name)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .frame(height: 28)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)

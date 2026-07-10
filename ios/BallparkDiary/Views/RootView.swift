@@ -52,16 +52,26 @@ struct MainTabsView: View {
         }
         .tint(Theme.clay)
         .onChange(of: store.requestedTab) { _, newValue in
-            guard let tab = newValue else { return }
-            switch tab {
-            case "diary": selection = .diary
-            case "map": selection = .map
-            case "stats": selection = .stats
-            case "inboxes": selection = .inboxes
-            case "profile": selection = .profile
-            default: break
-            }
-            store.requestedTab = nil
+            consumeRequestedTab(newValue)
         }
+        .onAppear {
+            // Handle the case where the flag was set before this view mounted
+            // (e.g. share extension → cold launch sets requestedTab before
+            // MainTabsView exists, so onChange never fires).
+            consumeRequestedTab(store.requestedTab)
+        }
+    }
+
+    private func consumeRequestedTab(_ newValue: String?) {
+        guard let tab = newValue else { return }
+        switch tab {
+        case "diary": selection = .diary
+        case "map": selection = .map
+        case "stats": selection = .stats
+        case "inboxes": selection = .inboxes
+        case "profile": selection = .profile
+        default: break
+        }
+        store.requestedTab = nil
     }
 }

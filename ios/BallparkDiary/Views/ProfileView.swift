@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Profile / Settings tab where the user manages their favorite team, home
 /// ballpark preference, and subscription status. Persisted choices feed into
@@ -9,7 +10,15 @@ struct ProfileView: View {
     @State private var showTeamPicker: Bool = false
     @State private var showPaywall: Bool = false
     @State private var showResetConfirm: Bool = false
+    @State private var showExportShare: Bool = false
+    @State private var showImportError: Bool = false
+    @State private var importResultMessage: String? = nil
+    @State private var showImportResult: Bool = false
+    @State private var exportedData: Data? = nil
+    @State private var showFileImporter: Bool = false
+    #if DEBUG
     @State private var showDebugProToggle: Bool = false
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -32,8 +41,22 @@ struct ProfileView: View {
                             .padding(.horizontal, 16)
 
                         // Developer debug section (hidden — long-press pro card to reveal)
+                        #if DEBUG
                         if showDebugProToggle {
                             debugProSection
+                                .padding(.horizontal, 16)
+                                .padding(.top, 8)
+                        }
+                        #endif
+
+                        // Data portability
+                        dataPortabilitySection
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+
+                        // Ballpark Wrapped (Pro)
+                        if storeKit.isPremium, !store.seasonRecaps.isEmpty {
+                            BallparkWrappedCard()
                                 .padding(.horizontal, 16)
                                 .padding(.top, 8)
                         }
@@ -67,11 +90,104 @@ struct ProfileView: View {
             }
             .alert("Reset Diary?", isPresented: $showResetConfirm) {
                 Button("Cancel", role: .cancel) {}
+                Button("Export First", role: .cancel) {
+                    exportedData = store.exportData()
+                    if exportedData != nil { showExportShare = true }
+                }
                 Button("Reset Everything", role: .destructive) {
                     withAnimation { store.resetAll() }
                 }
             } message: {
-                Text("This will erase your diary, stats, ballpark visits, and inboxes. Your Pro purchase (if any) is not affected.")
+                Text("This will erase your diary, stats, ballpark visits, and inboxes. Your Pro purchase (if any) is not affected. Consider exporting a backup first.")
+            }
+            .sheet(isPresented: $showExportShare) {
+                if let data = exportedData {
+                    ShareSheetView(data: data)
+                        .presentationDetents([.medium])
+                }
+            }
+            .alert("Import Result", isPresented: $showImportResult) {
+                Button("OK") { importResultMessage = nil }
+            } message: {
+                Text(importResultMessage ?? "")
+            }
+        }
+    }
+
+    // MARK: - Data portability
+
+    private var dataPortabilitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Backup & Transfer")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
+
+            HStack(spacing: 12) {
+                Button {
+                    exportedData = store.exportData()
+                    if exportedData != nil { showExportShare = true }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("Export")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.lights)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Theme.lights.opacity(0.1))
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    showFileImporter = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("Import")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.clay)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Theme.clay.opacity(0.1))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text("Export saves your entire diary as a JSON file. Import merges a backup without duplicating games.")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textMuted)
+        }
+        .padding(16)
+        .nightCard()
+        .fileImporter(
+            isPresented: $showFileImporter,
+            allowedContentTypes: [.json]
+        ) { result in
+            switch result {
+            case .success(let url):
+                if let data = try? Data(contentsOf: url) {
+                    let count = store.importData(data)
+                    importResultMessage = count > 0
+                        ? "Imported \(count) game\(count == 1 ? "" : "s") from backup."
+                        : "No new games found in this file."
+                    showImportResult = true
+                } else {
+                    importResultMessage = "Couldn't read this file."
+                    showImportResult = true
+                }
+            case .failure:
+                importResultMessage = "Import failed."
+                showImportResult = true
             }
         }
     }
@@ -213,7 +329,7 @@ struct ProfileView: View {
                 }
                 Spacer()
                 if !storeKit.isPremium {
-                    Text("$9.99")
+                    Text("Pro")
                         .font(.stat(15, weight: .heavy))
                         .foregroundStyle(Theme.lights)
                         .padding(.horizontal, 12)
@@ -246,6 +362,7 @@ struct ProfileView: View {
         }
         .buttonStyle(.plain)
         .disabled(storeKit.isPremium)
+        #if DEBUG
         .onLongPressGesture(minimumDuration: 1.5) {
             #if canImport(UIKit)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -254,10 +371,12 @@ struct ProfileView: View {
                 showDebugProToggle.toggle()
             }
         }
+        #endif
     }
 
     // MARK: - Debug Pro section
 
+    #if DEBUG
     private var debugProSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
@@ -310,6 +429,7 @@ struct ProfileView: View {
                 .padding(12)
         }
     }
+    #endif
 
     // MARK: - Danger zone
 
@@ -415,11 +535,13 @@ private struct TeamPickerSheet: View {
                                                     .offset(x: 4, y: -4)
                                             }
                                         }
-                                        Text(team.fullName)
+                                        Text(team.name)
                                             .font(.system(size: 11, weight: .semibold))
                                             .foregroundStyle(Theme.textSecondary)
                                             .multilineTextAlignment(.center)
-                                            .lineLimit(1)
+                                            .lineLimit(2)
+                                            .minimumScaleFactor(0.8)
+                                            .frame(height: 28)
                                     }
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
@@ -450,6 +572,120 @@ private struct TeamPickerSheet: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Share sheet wrapper for exported data
+
+private struct ShareSheetView: UIViewControllerRepresentable {
+    let data: Data
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BallparkDiary-Backup-\(Int(Date().timeIntervalSince1970)).json")
+        try? data.write(to: tempURL, options: .atomic)
+        return UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator: NSObject {}
+}
+
+// MARK: - Ballpark Wrapped card
+
+private struct BallparkWrappedCard: View {
+    @Environment(DiaryStore.self) private var store
+    @State private var selectedYear: Int? = nil
+
+    private var recaps: [DiaryStore.SeasonRecap] { store.seasonRecaps }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("Ballpark Wrapped")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text("PRO")
+                    .font(.caps(9, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(Theme.lights)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Theme.lights.opacity(0.16)))
+            }
+
+            if recaps.isEmpty {
+                Text("Attend a game to unlock your season recap.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textMuted)
+            } else {
+                ForEach(recaps.prefix(3)) { recap in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("\(recap.year) Season")
+                                .font(.scoreboard(18, weight: .bold))
+                                .foregroundStyle(Theme.textPrimary)
+                            Spacer()
+                            Text("\(recap.gameCount) game\(recap.gameCount == 1 ? "" : "s")")
+                                .font(.stat(13, weight: .heavy))
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+
+                        HStack(spacing: 16) {
+                            WrappedStat(value: "\(recap.wins)-\(recap.losses)", label: "Record")
+                            WrappedStat(value: "\(recap.parksVisited)", label: "Parks")
+                            if recap.totalMinutes > 0 {
+                                WrappedStat(value: "\(recap.totalMinutes / 60)h", label: "Time")
+                            }
+                        }
+
+                        if let milestone = recap.topMilestone {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trophy.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Theme.lights)
+                                Text(milestone)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Theme.cardElevated)
+                    )
+                }
+            }
+        }
+        .padding(16)
+        .nightCard()
+    }
+}
+
+private struct WrappedStat: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.stat(16, weight: .heavy))
+                .foregroundStyle(Theme.textPrimary)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.textMuted)
         }
     }
 }
