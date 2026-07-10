@@ -14,6 +14,15 @@ nonisolated struct MLBGameResult: Sendable, Hashable {
     let isFinal: Bool
 }
 
+/// An upcoming (not yet final) home game at a team's ballpark — used to
+/// entice a visit when a park is selected on the map.
+nonisolated struct MLBUpcomingGame: Sendable, Hashable, Identifiable {
+    let gamePk: Int
+    let date: Date
+    let opponentMlbId: Int
+    var id: Int { gamePk }
+}
+
 // MARK: - Rich game details (box score / live feed)
 
 /// Verified facts and notable plays pulled from a finished game's live feed.
@@ -138,6 +147,45 @@ nonisolated final class MLBStatsService: Sendable {
                 )
             }
         }
+    }
+
+    /// Upcoming home games at `teamMlbId`'s ballpark over the next `days`
+    /// days, soonest first. Returns an empty array on any failure so the map
+    /// card can simply hide the section.
+    func upcomingHomeGames(teamMlbId: Int, days: Int = 45, limit: Int = 3) async -> [MLBUpcomingGame] {
+        guard teamMlbId > 0 else { return [] }
+        let calendar = Calendar(identifier: .gregorian)
+        let start = Date.now
+        guard let end = calendar.date(byAdding: .day, value: days, to: start) else { return [] }
+        var components = URLComponents(string: "https://statsapi.mlb.com/api/v1/schedule")!
+        components.queryItems = [
+            URLQueryItem(name: "sportId", value: "1"),
+            URLQueryItem(name: "teamId", value: String(teamMlbId)),
+            URLQueryItem(name: "startDate", value: Self.dateFormatter.string(from: start)),
+            URLQueryItem(name: "endDate", value: Self.dateFormatter.string(from: end))
+        ]
+        guard
+            let url = components.url,
+            let (data, response) = try? await Self.session.data(from: url),
+            (response as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) ?? true,
+            let schedule = try? JSONDecoder().decode(ScheduleResponse.self, from: data)
+        else { return [] }
+
+        var games: [MLBUpcomingGame] = []
+        for day in schedule.dates {
+            for game in day.games {
+                guard
+                    let home = game.teams.home.team.id, home == teamMlbId,
+                    let away = game.teams.away.team.id,
+                    let date = Self.gameDate(from: game.gameDate),
+                    date > start
+                else { continue }
+                let state = game.status.abstractGameState ?? ""
+                guard state.caseInsensitiveCompare("Final") != .orderedSame else { continue }
+                games.append(MLBUpcomingGame(gamePk: game.gamePk, date: date, opponentMlbId: away))
+            }
+        }
+        return Array(games.sorted { $0.date < $1.date }.prefix(limit))
     }
 
     /// Fetch verified facts, scoring plays and pitching lines for a finished

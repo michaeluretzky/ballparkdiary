@@ -389,6 +389,8 @@ private struct BallparkSnapshotCard: View {
     let discovery: String
     let discovered: Bool
     let onClose: () -> Void
+    @State private var upcoming: [MLBUpcomingGame] = []
+    @State private var isLoadingUpcoming: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -456,6 +458,31 @@ private struct BallparkSnapshotCard: View {
             .padding(.top, 10)
             .opacity(discovered ? 1 : 0.6)
 
+            // Upcoming home games — a nudge to plan a visit
+            if isLoadingUpcoming || !upcoming.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(park.team.accentOnDark)
+                        Text("UPCOMING AT THE PARK")
+                            .font(.caps(9, weight: .heavy))
+                            .tracking(2)
+                            .foregroundStyle(park.team.accentOnDark)
+                        if isLoadingUpcoming {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(Theme.textMuted)
+                        }
+                    }
+                    ForEach(upcoming) { g in
+                        UpcomingGameRow(game: g)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
             Divider().background(Color.white.opacity(0.08)).padding(.vertical, 12)
 
             if games.isEmpty {
@@ -509,6 +536,44 @@ private struct BallparkSnapshotCard: View {
                 .strokeBorder(Color.white.opacity(0.08))
         )
         .shadow(color: .black.opacity(0.4), radius: 20, y: 8)
+        .task(id: park.id) {
+            isLoadingUpcoming = true
+            upcoming = await MLBStatsService.shared.upcomingHomeGames(teamMlbId: park.team.mlbId)
+            isLoadingUpcoming = false
+        }
+    }
+}
+
+/// One upcoming home game: opponent, weekday + date, first-pitch time.
+private struct UpcomingGameRow: View {
+    let game: MLBUpcomingGame
+
+    private var opponent: Team? { Team.by(mlbId: game.opponentMlbId) }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let opponent {
+                TeamLogoView(team: opponent, size: 22, showGloss: false)
+            } else {
+                Image(systemName: "baseball")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+                    .frame(width: 22, height: 22)
+            }
+            Text("vs \(opponent?.name ?? "TBD")")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+            Spacer()
+            Text(game.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                .font(.stat(12, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+            Text(game.date.formatted(date: .omitted, time: .shortened))
+                .font(.stat(12, weight: .heavy))
+                .foregroundStyle(Theme.lights)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Versus \(opponent?.name ?? "opponent to be determined"), \(game.date.formatted(date: .abbreviated, time: .shortened))")
     }
 }
 
