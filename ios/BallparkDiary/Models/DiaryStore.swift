@@ -843,39 +843,41 @@ final class DiaryStore {
 
     // MARK: Manual entries
 
-    /// Add a manually entered game. Rejects exact duplicates by canonical key.
-    /// Also checks for near-duplicates and either auto-deletes (if preference
-    /// is on) or flags them for user review.
-    /// Returns nil if a game with the same day + teams already exists, or if
-    /// a near-duplicate was flagged instead of saved.
-    @discardableResult
-    func addManualGame(_ game: AttendedGame) -> AttendedGame? {
-        let key = canonicalKey(game)
-        let existingKeys = Set(games.map(canonicalKey))
-        guard !existingKeys.contains(key) else { return nil }
+    /// Outcome of a manual add attempt, so callers can explain failures to
+    /// the user instead of silently doing nothing.
+    enum ManualAddOutcome {
+        case added(AttendedGame)
+        case exactDuplicate(existing: AttendedGame)
+        case nearDuplicate(existing: AttendedGame)
+    }
 
-        // Check for near-duplicates.
-        let candidate = NearDuplicateCandidate(
-            proposedId: game.id,
-            date: game.date,
-            homeTeamId: game.homeTeamId,
-            awayTeamId: game.awayTeamId,
-            ballparkId: game.ballparkId,
-            confirmation: game.confirmation,
-            section: game.section,
-            row: game.row,
-            seat: game.seat
-        )
-        if let conflict = findNearDuplicate(for: candidate) {
-            if autoDeleteDuplicates {
-                return nil
-            } else {
-                flagDuplicate(
-                    candidate: candidate,
-                    existingGame: conflict,
-                    source: game.emailSubject
-                )
-                return nil
+    /// Add a manually entered game with a detailed outcome. Exact duplicates
+    /// (same day + hour + teams) are always rejected. Near-duplicates are
+    /// reported back to the caller unless `bypassNearDuplicateCheck` is true,
+    /// so the UI can ask the user whether to save anyway.
+    func addManualGameDetailed(
+        _ game: AttendedGame,
+        bypassNearDuplicateCheck: Bool = false
+    ) -> ManualAddOutcome {
+        let key = canonicalKey(game)
+        if let existing = games.first(where: { canonicalKey($0) == key }) {
+            return .exactDuplicate(existing: existing)
+        }
+
+        if !bypassNearDuplicateCheck {
+            let candidate = NearDuplicateCandidate(
+                proposedId: game.id,
+                date: game.date,
+                homeTeamId: game.homeTeamId,
+                awayTeamId: game.awayTeamId,
+                ballparkId: game.ballparkId,
+                confirmation: game.confirmation,
+                section: game.section,
+                row: game.row,
+                seat: game.seat
+            )
+            if let conflict = findNearDuplicate(for: candidate) {
+                return .nearDuplicate(existing: conflict)
             }
         }
 
@@ -888,7 +890,41 @@ final class DiaryStore {
         }
         if !hasCompletedOnboarding { hasCompletedOnboarding = true }
         save()
-        return game
+        return .added(game)
+    }
+
+    /// Add a manually entered game. Rejects exact duplicates by canonical key.
+    /// Also checks for near-duplicates and either auto-deletes (if preference
+    /// is on) or flags them for user review.
+    /// Returns nil if a game with the same day + teams already exists, or if
+    /// a near-duplicate was flagged instead of saved.
+    @discardableResult
+    func addManualGame(_ game: AttendedGame) -> AttendedGame? {
+        switch addManualGameDetailed(game) {
+        case .added(let saved):
+            return saved
+        case .exactDuplicate:
+            return nil
+        case .nearDuplicate(let existing):
+            if autoDeleteDuplicates { return nil }
+            let candidate = NearDuplicateCandidate(
+                proposedId: game.id,
+                date: game.date,
+                homeTeamId: game.homeTeamId,
+                awayTeamId: game.awayTeamId,
+                ballparkId: game.ballparkId,
+                confirmation: game.confirmation,
+                section: game.section,
+                row: game.row,
+                seat: game.seat
+            )
+            flagDuplicate(
+                candidate: candidate,
+                existingGame: existing,
+                source: game.emailSubject
+            )
+            return nil
+        }
     }
 
     /// Update which team the user rooted for on a saved game. Pass nil to

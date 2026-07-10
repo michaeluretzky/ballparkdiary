@@ -90,36 +90,63 @@ enum Theme {
 
 // MARK: - Typography
 //
-// Structured, official typographic hierarchy — clean sans-serif throughout
-// for a modern athletic scoreboard feel. No newspaper serifs.
+// Distinctive two-face system — condensed athletic for numbers and scores,
+// slab serif for titles. Body text stays clean system for readability.
+//
+// Faces (bundled, OFL-licensed):
+//   Barlow Condensed — tall jersey/scoreboard letterforms (display, scoreboard, caps)
+//   Zilla Slab       — vintage scorecard slab serif (headline)
 //
 // Roles:
-//   display   — biggest numbers (scores, hero counts) · heavy system
-//   headline  — section titles, ballpark names · bold system
-//   scoreboard — compact athletic label (W/L, team abbreviations) · default
-//   stat      — tabular monospaced numbers · default
-//   body      — paragraph text · default
-//   caption   — secondary / footnote text · default
-//   caps      — tracked uppercase label · default
+//   display   — biggest numbers (scores, hero counts) · Barlow Condensed
+//   headline  — section titles, ballpark names · Zilla Slab
+//   scoreboard — compact athletic label (W/L, team abbreviations) · Barlow Condensed
+//   stat      — tabular monospaced numbers · system (digit alignment)
+//   body      — paragraph text · system
+//   caption   — secondary / footnote text · system
+//   caps      — tracked uppercase label · Barlow Condensed
 
-extension Font {
-    /// Hero numbers — heavy, structured, authoritative.
-    /// Scales with Dynamic Type using @ScaledMetric-backed relative sizing.
-    static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
-        .system(size: size, weight: weight, design: .default)
+/// Bundled brand font PostScript names, resolved by requested weight.
+/// SwiftUI falls back to the system face automatically if a custom font
+/// resource fails to load, so text never disappears.
+private enum BrandFont {
+    /// Barlow Condensed — athletic, stadium-signage condensed sans.
+    static func condensed(_ weight: Font.Weight) -> String {
+        switch weight {
+        case .black, .heavy: return "BarlowCondensed-Black"
+        case .bold:          return "BarlowCondensed-Bold"
+        default:             return "BarlowCondensed-SemiBold"
+        }
     }
 
-    /// Section titles, ballpark names, card headers — bold and official.
+    /// Zilla Slab — warm letterpress slab serif for titles.
+    static func slab(_ weight: Font.Weight) -> String {
+        switch weight {
+        case .black, .heavy, .bold: return "ZillaSlab-Bold"
+        default:                    return "ZillaSlab-SemiBold"
+        }
+    }
+}
+
+extension Font {
+    /// Hero numbers — tall, condensed, scoreboard-authoritative.
+    /// Scales with Dynamic Type via relative text styles.
+    static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
+        .custom(BrandFont.condensed(weight), size: size, relativeTo: ScaledFont.textStyle(for: size))
+    }
+
+    /// Section titles, ballpark names, card headers — slab-serif character.
     static func headline(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .default)
+        .custom(BrandFont.slab(weight), size: size, relativeTo: ScaledFont.textStyle(for: size))
     }
 
     /// Compact athletic label — scores, team abbreviations, win/loss markers.
     static func scoreboard(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .default)
+        .custom(BrandFont.condensed(weight), size: size, relativeTo: ScaledFont.textStyle(for: size))
     }
 
-    /// Tabular, monospaced digits for stat numbers.
+    /// Tabular, monospaced digits for stat numbers — stays system so
+    /// columns of digits align perfectly.
     static func stat(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight, design: .default).monospacedDigit()
     }
@@ -134,9 +161,9 @@ extension Font {
         .system(size: max(11, size), weight: weight, design: .default)
     }
 
-    /// Compact uppercase label. Used sparingly — not on every card.
+    /// Compact uppercase label — condensed athletic caps hold tracking well.
     static func caps(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        .system(size: max(11, size), weight: weight, design: .default)
+        .custom(BrandFont.condensed(weight), size: max(11, size), relativeTo: ScaledFont.textStyle(for: size))
     }
 }
 

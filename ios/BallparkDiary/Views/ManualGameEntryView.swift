@@ -29,6 +29,12 @@ struct ManualGameEntryView: View {
     @State private var verifyMessage: String = ""
     @State private var resolvingUnsure: Bool = false
 
+    // Duplicate feedback — the save button must never silently fail.
+    @State private var exactDuplicate: AttendedGame?
+    @State private var nearDuplicateExisting: AttendedGame?
+    @State private var pendingSave: AttendedGame?
+    @State private var pendingSaveIsUnverified: Bool = false
+
     enum Field: Hashable { case section, row, seat, companions, memory }
     enum VerifyState {
         case idle
@@ -233,7 +239,46 @@ struct ManualGameEntryView: View {
                     }
                 }
             }
+            .alert(
+                "Already in your diary",
+                isPresented: Binding(
+                    get: { exactDuplicate != nil },
+                    set: { if !$0 { exactDuplicate = nil } }
+                )
+            ) {
+                Button("OK") {
+                    exactDuplicate = nil
+                    dismiss()
+                }
+            } message: {
+                Text(exactDuplicateMessage)
+            }
+            .alert(
+                "Possible duplicate",
+                isPresented: Binding(
+                    get: { nearDuplicateExisting != nil },
+                    set: { if !$0 { nearDuplicateExisting = nil } }
+                )
+            ) {
+                Button("Save Anyway") { saveAnyway() }
+                Button("Cancel", role: .cancel) {
+                    nearDuplicateExisting = nil
+                    pendingSave = nil
+                }
+            } message: {
+                Text(nearDuplicateMessage)
+            }
         }
+    }
+
+    private var exactDuplicateMessage: String {
+        guard let g = exactDuplicate else { return "" }
+        return "\(g.awayTeam.fullName) @ \(g.homeTeam.fullName) on \(g.date.formatted(date: .abbreviated, time: .omitted)) is already saved — no need to add it again."
+    }
+
+    private var nearDuplicateMessage: String {
+        guard let g = nearDuplicateExisting else { return "" }
+        return "This looks a lot like \(g.awayTeam.fullName) @ \(g.homeTeam.fullName) on \(g.date.formatted(date: .abbreviated, time: .omitted)), which is already in your diary. Save this as a separate game?"
     }
 
     // MARK: - Actions
@@ -372,15 +417,56 @@ struct ManualGameEntryView: View {
 
     private func saveUnverified() {
         let game = makeGame(isVerified: false, status: .completed)
-        if store.addManualGame(game) != nil {
-            verifyState = .savedUnverified
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dismiss() }
-        }
+        handleSaveOutcome(store.addManualGameDetailed(game), pending: game, unverified: true)
     }
 
     private func saveVerified(_ game: AttendedGame) {
-        if store.addManualGame(game) != nil {
-            dismiss()
+        handleSaveOutcome(store.addManualGameDetailed(game), pending: game, unverified: false)
+    }
+
+    /// Routes every save attempt through visible feedback — an exact duplicate
+    /// explains itself and closes; a near-duplicate asks before saving anyway.
+    private func handleSaveOutcome(
+        _ outcome: DiaryStore.ManualAddOutcome,
+        pending: AttendedGame,
+        unverified: Bool
+    ) {
+        switch outcome {
+        case .added:
+            if unverified {
+                verifyState = .savedUnverified
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dismiss() }
+            } else {
+                dismiss()
+            }
+        case .exactDuplicate(let existing):
+            exactDuplicate = existing
+        case .nearDuplicate(let existing):
+            nearDuplicateExisting = existing
+            pendingSave = pending
+            pendingSaveIsUnverified = unverified
+        }
+    }
+
+    /// User confirmed the near-duplicate is a separate game — save it,
+    /// skipping the fuzzy check (exact duplicates are still rejected).
+    private func saveAnyway() {
+        guard let pending = pendingSave else { return }
+        nearDuplicateExisting = nil
+        pendingSave = nil
+        let outcome = store.addManualGameDetailed(pending, bypassNearDuplicateCheck: true)
+        switch outcome {
+        case .added:
+            if pendingSaveIsUnverified {
+                verifyState = .savedUnverified
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dismiss() }
+            } else {
+                dismiss()
+            }
+        case .exactDuplicate(let existing):
+            exactDuplicate = existing
+        case .nearDuplicate:
+            break
         }
     }
 

@@ -12,8 +12,17 @@ struct BallparkDiaryApp: App {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithTransparentBackground()
         appearance.backgroundColor = UIColor(Theme.nightDeep.opacity(0.95))
-        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
-        appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
+        // Slab-serif nav titles — falls back to system if the font is missing.
+        var largeTitleAttributes: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.white]
+        var titleAttributes: [NSAttributedString.Key: Any] = [.foregroundColor: UIColor.white]
+        if let slabLarge = UIFont(name: "ZillaSlab-Bold", size: 32) {
+            largeTitleAttributes[.font] = slabLarge
+        }
+        if let slabInline = UIFont(name: "ZillaSlab-Bold", size: 18) {
+            titleAttributes[.font] = slabInline
+        }
+        appearance.largeTitleTextAttributes = largeTitleAttributes
+        appearance.titleTextAttributes = titleAttributes
         UINavigationBar.appearance().standardAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().compactAppearance = appearance
