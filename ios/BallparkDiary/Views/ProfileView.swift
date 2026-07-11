@@ -181,11 +181,18 @@ struct ProfileView: View {
         ) { result in
             switch result {
             case .success(let url):
+                // Files/iCloud URLs are security-scoped — reading fails on
+                // device without explicitly starting access first.
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
                 if let data = try? Data(contentsOf: url) {
-                    let count = store.importData(data)
-                    importResultMessage = count > 0
-                        ? "Imported \(count) game\(count == 1 ? "" : "s") from backup."
-                        : "No new games found in this file."
+                    if let count = store.importData(data) {
+                        importResultMessage = count > 0
+                            ? "Imported \(count) game\(count == 1 ? "" : "s") from backup."
+                            : "No new games found in this file."
+                    } else {
+                        importResultMessage = "This file isn't a Ballpark Diary backup."
+                    }
                     showImportResult = true
                 } else {
                     importResultMessage = "Couldn't read this file."

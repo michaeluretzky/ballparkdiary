@@ -195,7 +195,7 @@ nonisolated enum TicketEmailParser {
     private static func seatFieldValue(in line: String, keywords: [String]) -> String? {
         let pattern = keywords.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
         guard let regex = try? NSRegularExpression(
-            pattern: "\\b(?:\\(pattern\\))\\s*[:-]?\\s*(\\S+)",
+            pattern: "\\b(?:" + pattern + ")\\s*[:-]?\\s*(\\S+)",
             options: [.caseInsensitive]
         ) else { return nil }
         let ns = line as NSString

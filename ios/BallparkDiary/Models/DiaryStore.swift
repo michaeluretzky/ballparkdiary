@@ -319,7 +319,7 @@ final class DiaryStore {
             Achievement(id: "five_parks", symbol: "building.columns.fill", title: "Five Stadiums", detail: "Visit 5 unique ballparks", unlocked: ballparkCount >= 5, tint: Theme.lights, tier: .free),
             Achievement(id: "ten_parks", symbol: "building.2.fill", title: "Ten Stadiums", detail: "Visit 10 unique ballparks", unlocked: ballparkCount >= 10, tint: Theme.lights, tier: .free),
             Achievement(id: "twenty_parks", symbol: "map.fill", title: "Road Tripper", detail: "Visit 20 unique ballparks", unlocked: ballparkCount >= 20, tint: Theme.lights, tier: .free),
-            Achievement(id: "thirty_parks", symbol: "crown.fill", title: "Pilgrim", detail: "All 30 ballparks visited", unlocked: ballparkCount == 30, tint: Theme.lights, tier: .free),
+            Achievement(id: "thirty_parks", symbol: "crown.fill", title: "Pilgrim", detail: "All 30 ballparks visited", unlocked: ballparkCount >= 30, tint: Theme.lights, tier: .free),
             Achievement(id: "coast", symbol: "globe.americas.fill", title: "Coast to Coast", detail: "AL East + NL West", unlocked: coastToCoast, tint: Theme.grass, tier: .free),
         ]
     }
@@ -1217,10 +1217,16 @@ final class DiaryStore {
                     hadNetworkError = true
                     continue
                 }
-                let match = results.first {
+                // Require the exact matchup (home/away in either order) — never
+                // promote with a different game's score. If the stored opponent
+                // is unknown (mlbId 0), a single result for the team is safe.
+                var match = results.first {
                     ($0.homeMlbId == teamMlbId && $0.awayMlbId == opponentMlbId) ||
                     ($0.awayMlbId == teamMlbId && $0.homeMlbId == opponentMlbId)
-                } ?? results.first
+                }
+                if match == nil, opponentMlbId <= 0, results.count == 1 {
+                    match = results.first
+                }
                 if let match, match.isFinal {
                     let promoted = game.completed(homeScore: match.homeScore, awayScore: match.awayScore)
                     if let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
@@ -1443,10 +1449,11 @@ final class DiaryStore {
     }
 
     /// Import a diary JSON blob, merging games by canonical key (dedup).
-    /// Returns the number of newly imported games.
+    /// Returns the number of newly imported games, or nil when the data is
+    /// not a valid Ballpark Diary backup (so the UI can say so explicitly).
     @discardableResult
-    func importData(_ data: Data) -> Int {
-        guard let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return 0 }
+    func importData(_ data: Data) -> Int? {
+        guard let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return nil }
         var existingKeys = Set(games.map(canonicalKey))
         var newCount = 0
         for (key, games) in snapshot.gamesByInbox {
@@ -1459,11 +1466,31 @@ final class DiaryStore {
                 existing.append(game)
                 newCount += 1
             }
+            guard !existing.isEmpty else { continue }
             gamesByInbox[inboxId] = existing.sorted { $0.date > $1.date }
         }
-        // Merge inboxes that don't already exist.
-        for inbox in snapshot.inboxes where !connectedInboxes.contains(where: { $0.id == inbox.id }) {
+        // Merge inboxes that don't already exist and actually own games.
+        for inbox in snapshot.inboxes
+        where !connectedInboxes.contains(where: { $0.id == inbox.id })
+            && gamesByInbox[inbox.id]?.isEmpty == false {
             connectedInboxes.append(inbox)
+        }
+        // Safety net: any merged game list without an inbox record (e.g. a
+        // backup with mismatched inbox metadata) gets a visible entry so the
+        // games can still be managed from the Inboxes tab.
+        for (inboxId, list) in gamesByInbox
+        where !connectedInboxes.contains(where: { $0.id == inboxId }) {
+            connectedInboxes.append(ConnectedInbox(
+                id: inboxId,
+                email: "Imported backup",
+                provider: .shared,
+                ticketsFound: list.count,
+                connectedAt: .now
+            ))
+        }
+        // Keep every inbox's ticket count in sync after the merge.
+        for (index, inbox) in connectedInboxes.enumerated() {
+            connectedInboxes[index].ticketsFound = gamesByInbox[inbox.id]?.count ?? inbox.ticketsFound
         }
         if newCount > 0 { save() }
         return newCount
