@@ -11,6 +11,7 @@ struct ProfileView: View {
     @Environment(StoreViewModel.self) private var storeKit
     @State private var showTeamPicker: Bool = false
     @State private var showPaywall: Bool = false
+    @State private var paywallContext: PaywallContext? = nil
     @State private var showResetConfirm: Bool = false
     @State private var showExportShare: Bool = false
     @State private var showImportError: Bool = false
@@ -60,11 +61,19 @@ struct ProfileView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
 
-                        // Ballpark Wrapped (Pro)
-                        if storeKit.isPremium, !store.seasonRecaps.isEmpty {
-                            BallparkWrappedCard()
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
+                        // iCloud backup (Pro)
+                        cloudBackupCard
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+
+                        // Ballpark Wrapped — free season recap; share card is Pro
+                        if !store.seasonRecaps.isEmpty {
+                            BallparkWrappedCard(onUnlock: { context in
+                                paywallContext = context
+                                showPaywall = true
+                            })
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
                         }
 
                         // Danger zone
@@ -92,7 +101,7 @@ struct ProfileView: View {
                 }
             }
             .sheet(isPresented: $showPaywall) {
-                PaywallView(store: storeKit)
+                PaywallView(store: storeKit, context: paywallContext)
             }
             .alert("Reset Diary?", isPresented: $showResetConfirm) {
                 Button("Cancel", role: .cancel) {}
@@ -203,6 +212,15 @@ struct ProfileView: View {
                 showImportResult = true
             }
         }
+    }
+
+    // MARK: - iCloud backup (Pro)
+
+    private var cloudBackupCard: some View {
+        CloudBackupCard(onUnlock: {
+            paywallContext = .backup
+            showPaywall = true
+        })
     }
 
     // MARK: - Favorite team
@@ -678,11 +696,14 @@ private struct ShareSheetView: UIViewControllerRepresentable {
     final class Coordinator: NSObject {}
 }
 
-// MARK: - Ballpark Wrapped card
+// MARK: - Ballpark Wrapped card (free recap, Pro share card)
 
 private struct BallparkWrappedCard: View {
     @Environment(DiaryStore.self) private var store
-    @State private var selectedYear: Int? = nil
+    @Environment(StoreViewModel.self) private var storeKit
+    /// Called with a paywall context when a free user taps a Pro action.
+    let onUnlock: (PaywallContext) -> Void
+    @State private var shareItem: ShareableImage? = nil
 
     private var recaps: [DiaryStore.SeasonRecap] { store.seasonRecaps }
 
@@ -696,13 +717,6 @@ private struct BallparkWrappedCard: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
-                Text("PRO")
-                    .font(.caps(9, weight: .heavy))
-                    .tracking(2)
-                    .foregroundStyle(Theme.lights)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.lights.opacity(0.16)))
             }
 
             if recaps.isEmpty {
@@ -741,6 +755,41 @@ private struct BallparkWrappedCard: View {
                                     .lineLimit(1)
                             }
                         }
+
+                        Button {
+                            if storeKit.isPremium {
+                                renderAndShare(recap)
+                            } else {
+                                onUnlock(.wrapped(year: recap.year, games: recap.gameCount))
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text("Share recap card")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Spacer()
+                                if !storeKit.isPremium {
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                            }
+                            .foregroundStyle(Theme.lights)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Theme.lights.opacity(0.08))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Theme.lights.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(storeKit.isPremium
+                            ? "Share \(String(recap.year)) season recap card"
+                            : "Share \(String(recap.year)) season recap card, requires Pro")
                     }
                     .padding(12)
                     .background(
@@ -752,6 +801,244 @@ private struct BallparkWrappedCard: View {
         }
         .padding(16)
         .nightCard()
+        .sheet(item: $shareItem) { item in
+            ActivityShareSheet(items: [item.image])
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    @MainActor
+    private func renderAndShare(_ recap: DiaryStore.SeasonRecap) {
+        let card = WrappedShareCardView(recap: recap, favoriteTeam: store.favoriteTeam)
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3
+        if let image = renderer.uiImage {
+            shareItem = ShareableImage(image: image)
+        }
+    }
+}
+
+/// The rendered "My Year at the Ballpark" share image — draws synchronously,
+/// no network assets.
+private struct WrappedShareCardView: View {
+    let recap: DiaryStore.SeasonRecap
+    let favoriteTeam: Team
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Text("MY \(String(recap.year)) AT THE BALLPARK")
+                    .font(.caps(12, weight: .heavy))
+                    .tracking(3)
+                    .foregroundStyle(Theme.clay)
+                Text("\(recap.gameCount)")
+                    .font(.scoreboard(64, weight: .black))
+                    .foregroundStyle(Theme.textPrimary)
+                Text("game\(recap.gameCount == 1 ? "" : "s") in the seats")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            HStack(spacing: 22) {
+                WrappedShareStat(value: recap.wins + recap.losses > 0 ? "\(recap.wins)\u{2013}\(recap.losses)" : "–", label: "RECORD")
+                WrappedShareStat(value: "\(recap.parksVisited)", label: "PARKS")
+                if recap.totalMinutes > 0 {
+                    WrappedShareStat(value: "\(recap.totalMinutes / 60)h", label: "AT THE PARK")
+                }
+                WrappedShareStat(value: favoriteTeam.abbreviation, label: "MY TEAM")
+            }
+
+            if let milestone = recap.topMilestone {
+                HStack(spacing: 6) {
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text(milestone)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.horizontal, 8)
+            }
+
+            VStack(spacing: 3) {
+                Text("What did your season look like?")
+                    .font(.headline(15, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("BALLPARK DIARY")
+                    .font(.caps(10, weight: .heavy))
+                    .tracking(3)
+                    .foregroundStyle(Theme.textMuted)
+            }
+        }
+        .padding(28)
+        .frame(width: 360)
+        .background(Theme.nightGradient)
+        .clipShape(.rect(cornerRadius: 24))
+    }
+}
+
+private struct WrappedShareStat: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.stat(20, weight: .heavy))
+                .foregroundStyle(Theme.textPrimary)
+            Text(label)
+                .font(.caps(9, weight: .heavy))
+                .tracking(1.5)
+                .foregroundStyle(Theme.textMuted)
+        }
+    }
+}
+
+// MARK: - iCloud backup card (Pro)
+
+private struct CloudBackupCard: View {
+    @Environment(DiaryStore.self) private var store
+    @Environment(StoreViewModel.self) private var storeKit
+    let onUnlock: () -> Void
+    @State private var restoreMessage: String? = nil
+    @State private var showRestoreResult: Bool = false
+
+    private var backup: CloudBackupService { CloudBackupService.shared }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "icloud.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Theme.lights.opacity(0.16)))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("iCloud Backup")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("PRO")
+                            .font(.caps(9, weight: .heavy))
+                            .tracking(2)
+                            .foregroundStyle(Theme.lights)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Theme.lights.opacity(0.16)))
+                    }
+                    Text(statusLine)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { backup.isEnabled },
+                    set: { newValue in
+                        guard storeKit.isPremium else {
+                            onUnlock()
+                            return
+                        }
+                        backup.setEnabled(newValue, currentData: store.exportData())
+                    }
+                ))
+                .tint(Theme.lights)
+                .labelsHidden()
+                .accessibilityLabel("Automatic iCloud backup")
+            }
+
+            if let error = backup.lastError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.lights.opacity(0.08))
+                )
+            }
+
+            if storeKit.isPremium, backup.isEnabled {
+                HStack(spacing: 12) {
+                    Button {
+                        if let data = store.exportData() {
+                            backup.backup(data)
+                        }
+                    } label: {
+                        Text("Back Up Now")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.lights)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Theme.lights.opacity(0.1))
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        restoreFromCloud()
+                    } label: {
+                        Text("Restore")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.clay)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Theme.clay.opacity(0.1))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(16)
+        .nightCard()
+        .alert("iCloud Restore", isPresented: $showRestoreResult) {
+            Button("OK") { restoreMessage = nil }
+        } message: {
+            Text(restoreMessage ?? "")
+        }
+    }
+
+    private var statusLine: String {
+        if !storeKit.isPremium {
+            return "Your lifetime diary, automatically protected in your iCloud."
+        }
+        if !backup.isEnabled {
+            return "Turn on to back up your diary automatically after every change."
+        }
+        if let date = backup.storedBackupDate {
+            return "Last backup \(date.formatted(.relative(presentation: .named)))"
+        }
+        return "Waiting for the first backup…"
+    }
+
+    private func restoreFromCloud() {
+        guard let data = backup.restoreData() else {
+            restoreMessage = "No iCloud backup found for this Apple ID yet."
+            showRestoreResult = true
+            return
+        }
+        if let count = store.importData(data) {
+            restoreMessage = count > 0
+                ? "Restored \(count) game\(count == 1 ? "" : "s") from iCloud."
+                : "Your diary already has everything from the iCloud backup."
+        } else {
+            restoreMessage = "The iCloud backup couldn't be read."
+        }
+        showRestoreResult = true
     }
 }
 

@@ -32,7 +32,9 @@ final class StoreViewModel {
         return revenueCatPremium
     }
 
-    private var revenueCatPremium: Bool = false
+    private var revenueCatPremium: Bool = false {
+        didSet { WidgetSnapshotService.setPro(isPremium) }
+    }
     private let entitlementID = "pro"
     private let debugKey = "bp_debug_pro"
     private let defaults = UserDefaults.standard
@@ -65,6 +67,7 @@ final class StoreViewModel {
     func toggleDebugPro() {
         debugProEnabled.toggle()
         defaults.set(debugProEnabled, forKey: debugKey)
+        WidgetSnapshotService.setPro(isPremium)
     }
     #endif
 

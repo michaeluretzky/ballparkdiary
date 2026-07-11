@@ -6,6 +6,7 @@ struct DiaryView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(StoreViewModel.self) private var storeKit
     @State private var showPaywall = false
+    @State private var paywallContext: PaywallContext? = nil
     @State private var showAddSheet = false
     @State private var gameToDelete: AttendedGame? = nil
     @State private var showDeleteConfirm = false
@@ -54,7 +55,14 @@ struct DiaryView: View {
                                 }
                                 .buttonStyle(.plain)
                             } else {
-                                Button { showPaywall = true } label: {
+                                Button {
+                                    let yearsAgo = max(1, Calendar.current.dateComponents([.year], from: throwback.date, to: .now).year ?? 1)
+                                    paywallContext = .throwback(
+                                        yearsAgo: yearsAgo,
+                                        summary: "\(throwback.awayTeam.abbreviation) \(throwback.awayScore)\u{2013}\(throwback.homeScore) \(throwback.homeTeam.abbreviation) at \(throwback.ballpark.name)"
+                                    )
+                                    showPaywall = true
+                                } label: {
                                     LockedThrowbackBanner()
                                         .padding(.horizontal, 16)
                                 }
@@ -161,7 +169,7 @@ struct DiaryView: View {
 
                                 ForEach(group.1) { game in
                                     NavigationLink(value: game) {
-                                        GameCard(game: game)
+                                        GameCard(game: game, highlightHistoric: storeKit.isPremium && game.isHistoric)
                                             .padding(.horizontal, 16)
                                             .scrollTransition(.interactive, axis: .vertical) { content, phase in
                                                 content
@@ -248,7 +256,7 @@ struct DiaryView: View {
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showPaywall) {
-                PaywallView(store: storeKit)
+                PaywallView(store: storeKit, context: paywallContext)
             }
             .onAppear {
                 navigateToImportedGameIfNeeded()
@@ -351,16 +359,34 @@ struct DiaryView: View {
 private struct DiaryHeader: View {
     @Environment(DiaryStore.self) private var store
     var body: some View {
-        HStack(spacing: 12) {
-            HeaderStat(value: "\(store.totalGames)", label: "Games")
-            Divider().frame(height: 32).overlay(Color.white.opacity(0.08))
-            HeaderStat(value: "\(store.ballparkCount)/30", label: "Parks")
-            Divider().frame(height: 32).overlay(Color.white.opacity(0.08))
-            HeaderStat(value: store.rootedGames.isEmpty ? "–" : "\(store.winCount)-\(store.lossCount)", label: "Record")
-            Spacer(minLength: 0)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                HeaderStat(value: "\(store.totalGames)", label: "Games")
+                Divider().frame(height: 32).overlay(Color.white.opacity(0.08))
+                HeaderStat(value: "\(store.ballparkCount)/30", label: "Parks")
+                Divider().frame(height: 32).overlay(Color.white.opacity(0.08))
+                HeaderStat(value: store.rootedGames.isEmpty ? "–" : "\(store.winCount)-\(store.lossCount)", label: "Record")
+                Divider().frame(height: 32).overlay(Color.white.opacity(0.08))
+                HeaderStat(value: "\(store.gamesThisSeason)", label: "This Season")
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            if store.seasonStreak >= 2 {
+                HStack(spacing: 6) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.clay)
+                    Text("\(store.seasonStreak) seasons in a row at the ballpark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
         .nightCard()
         .overlay(alignment: .topLeading) {
             Rectangle()
@@ -370,6 +396,8 @@ private struct DiaryHeader: View {
                 .padding(.horizontal, 16)
                 .offset(y: -1.5)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(store.totalGames) games, \(store.ballparkCount) of 30 parks, record \(store.winCount) and \(store.lossCount), \(store.gamesThisSeason) games this season\(store.seasonStreak >= 2 ? ", \(store.seasonStreak) seasons in a row" : "")")
     }
 }
 
@@ -392,6 +420,8 @@ private struct HeaderStat: View {
 
 struct GameCard: View {
     let game: AttendedGame
+    /// Show the "famous game" flag on the hero (Pro feature — caller gates it).
+    var highlightHistoric: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -483,6 +513,22 @@ struct GameCard: View {
                 .background(.ultraThinMaterial)
                 .clipShape(.rect(cornerRadius: 6))
                 .padding(10)
+
+            if highlightHistoric {
+                HStack(spacing: 4) {
+                    Image(systemName: "star.circle.fill")
+                        .font(.system(size: 9, weight: .heavy))
+                    Text("FAMOUS GAME")
+                        .font(.caps(9, weight: .heavy))
+                        .tracking(1.5)
+                }
+                .foregroundStyle(Theme.nightDeep)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Theme.lights))
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
 
             if game.firstPitchTempF > 0 {
                 HStack(spacing: 4) {

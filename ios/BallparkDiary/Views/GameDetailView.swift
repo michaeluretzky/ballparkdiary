@@ -12,6 +12,7 @@ struct GameDetailView: View {
     @State private var shareItem: ShareableImage? = nil
     @State private var showDeleteConfirm: Bool = false
     @State private var showPaywall: Bool = false
+    @State private var paywallContext: PaywallContext? = nil
     @State private var showEditSheet: Bool = false
     @State private var hasRenderedShareCard: Bool = false
     /// Timer-driven fact rotation for the BallparkPanel.
@@ -29,6 +30,22 @@ struct GameDetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 6)
 
+                if let note = liveGame.historicNote {
+                    if storeKit.isPremium {
+                        FamousGameBanner(note: note)
+                            .padding(.horizontal, 16)
+                    } else {
+                        Button {
+                            paywallContext = .famousGame
+                            showPaywall = true
+                        } label: {
+                            LockedFamousGameBanner()
+                                .padding(.horizontal, 16)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
                 TicketStubReal(game: liveGame)
                     .padding(.horizontal, 16)
 
@@ -44,9 +61,21 @@ struct GameDetailView: View {
                     if storeKit.isPremium {
                         MilestonesPanel(game: liveGame)
                             .padding(.horizontal, 16)
+                    } else if let free = store.firstWitnessedMilestone, free.game.id == liveGame.id {
+                        // The user's very first witnessed milestone is free —
+                        // teasing their own real data converts better than a lock.
+                        FreeFirstMilestonePanel(
+                            game: liveGame,
+                            freeMilestone: free.milestone,
+                            onUnlock: { openMilestonePaywall() }
+                        )
+                        .padding(.horizontal, 16)
                     } else {
-                        LockedMilestonesPanel(game: liveGame, onUnlock: { showPaywall = true })
-                            .padding(.horizontal, 16)
+                        LockedMilestonesPanel(
+                            game: liveGame,
+                            onUnlock: { openMilestonePaywall() }
+                        )
+                        .padding(.horizontal, 16)
                     }
                 }
 
@@ -137,7 +166,7 @@ struct GameDetailView: View {
             Text("This won't affect the original ticket or email.")
         }
         .sheet(isPresented: $showPaywall) {
-            PaywallView(store: storeKit)
+            PaywallView(store: storeKit, context: paywallContext)
         }
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.image])
@@ -150,6 +179,13 @@ struct GameDetailView: View {
         }
         .onAppear { startFactTimer() }
         .onDisappear { factTimer?.invalidate() }
+    }
+
+    /// Open the paywall with a milestone teaser built from the user's diary.
+    private func openMilestonePaywall() {
+        let sample = liveGame.milestones.first.map { "\($0.title) — \($0.playerName)" } ?? ""
+        paywallContext = .milestones(count: store.totalMilestonesWitnessed, sample: sample)
+        showPaywall = true
     }
 
     /// Lazily render the share card only when the user first taps share.
@@ -1037,11 +1073,166 @@ private struct PitchingStatCell: View {
     }
 }
 
+// MARK: - Famous game banner (Pro)
+
+/// "You were at a famous game" — shown when a diary entry later reads as
+/// historic (no-hitter, milestone, walk-off, marathon…). Pure delight.
+private struct FamousGameBanner: View {
+    let note: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "star.circle.fill")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Theme.nightDeep)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Theme.lights))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("YOU WERE AT A FAMOUS GAME")
+                    .font(.caps(9, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(Theme.lights)
+                Text(note)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.lights.opacity(0.1))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Theme.lights.opacity(0.45), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("You were at a famous game. \(note)")
+    }
+}
+
+/// Free-tier tease of the famous-game flag — opens the paywall.
+private struct LockedFamousGameBanner: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "star.circle.fill")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Theme.textMuted)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Theme.cardElevated))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("FAMOUS GAME")
+                    .font(.caps(9, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(Theme.textMuted)
+                Text("This night was historic. See why with Pro.")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "lock.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Theme.lights)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.cardElevated.opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("This game was historic. Unlock the famous game flag with Pro.")
+    }
+}
+
+// MARK: - Free first milestone (tease the rest)
+
+/// Free users see their FIRST witnessed milestone in full — real, personal
+/// data — with the rest of the game's milestones locked behind Pro.
+private struct FreeFirstMilestonePanel: View {
+    let game: AttendedGame
+    let freeMilestone: PlayerMilestone
+    let onUnlock: () -> Void
+
+    private var lockedCount: Int { max(0, game.milestones.count - 1) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("Career Milestones")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Spacer()
+                Text("Your first — free")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(Theme.lights)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(Theme.lights.opacity(0.16))
+                    )
+            }
+
+            NavigationLink(value: freeMilestone) {
+                MilestoneMedallion(milestone: freeMilestone)
+            }
+            .buttonStyle(.plain)
+
+            if lockedCount > 0 {
+                Button(action: onUnlock) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("\(lockedCount) more milestone\(lockedCount == 1 ? "" : "s") in this game — unlock with Pro")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.lights)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Theme.lights.opacity(0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Theme.lights.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .nightCardDeep()
+        .navigationDestination(for: PlayerMilestone.self) { milestone in
+            MilestoneDetailView(milestone: milestone, game: game)
+        }
+    }
+}
+
 // MARK: - Locked milestones (pro gate)
 
 private struct LockedMilestonesPanel: View {
     let game: AttendedGame
     let onUnlock: () -> Void
+
+    /// Real tease from the user's own data — first milestone of this game,
+    /// shown blurred so they know exactly what they're missing.
+    private var teaseLine: String? {
+        game.milestones.first.map { "\($0.title) — \($0.playerName)" }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1056,6 +1247,14 @@ private struct LockedMilestonesPanel: View {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Theme.lights)
+            }
+
+            if let teaseLine {
+                Text(teaseLine)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .blur(radius: 4)
+                    .accessibilityHidden(true)
             }
 
             Button(action: onUnlock) {

@@ -1,20 +1,36 @@
 import SwiftUI
 import RevenueCat
 
+/// What the user was looking at when the paywall opened. Renders a teaser
+/// card built from THEIR data — real numbers convert better than a generic
+/// perks list.
+enum PaywallContext {
+    case milestones(count: Int, sample: String)
+    case throwback(yearsAgo: Int, summary: String)
+    case fanRecord(wins: Int, losses: Int)
+    case wrapped(year: Int, games: Int)
+    case famousGame
+    case backup
+}
+
 /// Ballpark Diary Pro paywall. Stadium-night styling matching the rest of the
-/// app, a list of Pro perks, the monthly subscription package from RevenueCat's
-/// current offering, and a required Restore Purchases action.
+/// app, an optional context teaser built from the user's own data, a list of
+/// Pro perks, the monthly subscription package from RevenueCat's current
+/// offering, and a required Restore Purchases action.
 /// Copy is written in a plain, fan-first voice.
 struct PaywallView: View {
     var store: StoreViewModel
+    var context: PaywallContext? = nil
     @Environment(\.dismiss) private var dismiss
 
     private let perks: [Perk] = [
         Perk(symbol: "chart.bar.xaxis", title: "Player milestones & box scores", detail: "Career home runs, no-hitters, complete games — the moments you witnessed"),
+        Perk(symbol: "trophy.fill", title: "Fan record deep stats", detail: "Your record by team, day vs. night, home vs. road — stats no one else has"),
+        Perk(symbol: "sparkles", title: "Famous game flags", detail: "Find out when a game in your diary was historic — no-hitters, milestones, marathons"),
         Perk(symbol: "car.fill", title: "Road-trip builder", detail: "Nearby parks with back-to-back home games, chained into a weekend route"),
-        Perk(symbol: "ticket.fill", title: "Ticket search on upcoming games", detail: "Jump straight to tickets for any game on the map"),
         Perk(symbol: "calendar.badge.clock", title: "Anniversary throwbacks", detail: "\"One year ago today\" — your old games resurface on their anniversaries"),
-        Perk(symbol: "square.and.arrow.up.fill", title: "Shareable game cards", detail: "Turn any game into a card to post or send"),
+        Perk(symbol: "square.and.arrow.up.fill", title: "Shareable game & recap cards", detail: "Turn any game or season recap into a card to post or send"),
+        Perk(symbol: "icloud.fill", title: "Automatic iCloud backup", detail: "Your lifetime diary, protected — plus a home-screen widget"),
         Perk(symbol: "map.fill", title: "Quest card & Pro badges", detail: "The 30-ballpark quest plus division, rivalry, and road-warrior badges")
     ]
 
@@ -29,6 +45,9 @@ struct PaywallView: View {
                 ScrollView {
                     VStack(spacing: 22) {
                         header
+                        if let context {
+                            ContextTeaserCard(context: context)
+                        }
                         perksList
                         purchaseSection
                         legalFooter
@@ -133,9 +152,11 @@ struct PaywallView: View {
                     Task { await store.purchase(package: pkg) }
                 } label: {
                     VStack(spacing: 4) {
-                        Text("Unlock Pro")
+                        Text(hasFreeTrial(pkg) ? "Try Pro Free" : "Unlock Pro")
                             .font(.system(size: 17, weight: .heavy))
-                        Text("\(pkg.storeProduct.localizedPriceString)/month")
+                        Text(hasFreeTrial(pkg)
+                             ? "\(trialLabel(pkg)) free, then \(pkg.storeProduct.localizedPriceString)/month"
+                             : "\(pkg.storeProduct.localizedPriceString)/month")
                             .font(.system(size: 12, weight: .medium))
                             .opacity(0.9)
                     }
@@ -173,9 +194,29 @@ struct PaywallView: View {
         }
     }
 
+    /// Whether the package carries an introductory free trial the current
+    /// user is eligible for (StoreKit only exposes the discount when eligible).
+    private func hasFreeTrial(_ pkg: Package) -> Bool {
+        pkg.storeProduct.introductoryDiscount?.paymentMode == .freeTrial
+    }
+
+    /// Localized trial length, e.g. "7 days".
+    private func trialLabel(_ pkg: Package) -> String {
+        guard let discount = pkg.storeProduct.introductoryDiscount else { return "" }
+        let period = discount.subscriptionPeriod
+        let unitName: String
+        switch period.unit {
+        case .day: unitName = period.value == 1 ? "day" : "days"
+        case .week: return period.value == 1 ? "7 days" : "\(period.value) weeks"
+        case .month: unitName = period.value == 1 ? "month" : "months"
+        case .year: unitName = period.value == 1 ? "year" : "years"
+        }
+        return "\(period.value) \(unitName)"
+    }
+
     private var legalFooter: some View {
         VStack(spacing: 8) {
-            Text("Payment is charged to your Apple ID. The subscription renews monthly at the shown price until canceled — cancel anytime in Settings › Apple ID › Subscriptions, at least 24 hours before the period ends.")
+            Text("Payment is charged to your Apple ID. A free trial, when offered, converts to a paid subscription unless canceled before it ends. The subscription renews monthly at the shown price until canceled — cancel anytime in Settings › Apple ID › Subscriptions, at least 24 hours before the period ends.")
                 .font(.system(size: 10))
                 .foregroundStyle(Theme.textMuted)
                 .multilineTextAlignment(.center)
@@ -212,4 +253,99 @@ private struct Perk: Identifiable {
     let symbol: String
     let title: String
     let detail: String
+}
+
+// MARK: - Context teaser (the user's own data behind the lock)
+
+private struct ContextTeaserCard: View {
+    let context: PaywallContext
+
+    private var symbol: String {
+        switch context {
+        case .milestones: return "trophy.fill"
+        case .throwback: return "calendar.badge.clock"
+        case .fanRecord: return "chart.bar.xaxis"
+        case .wrapped: return "sparkles"
+        case .famousGame: return "star.circle.fill"
+        case .backup: return "icloud.fill"
+        }
+    }
+
+    private var headline: String {
+        switch context {
+        case .milestones(let count, _):
+            return count == 1
+                ? "You've witnessed a career milestone"
+                : "You've witnessed \(count) career milestones"
+        case .throwback(let yearsAgo, _):
+            return yearsAgo == 1 ? "One year ago today…" : "\(yearsAgo) years ago today…"
+        case .fanRecord(let wins, let losses):
+            return "Your lifetime record is \(wins)–\(losses)"
+        case .wrapped(let year, let games):
+            return "Your \(String(year)) season: \(games) game\(games == 1 ? "" : "s")"
+        case .famousGame:
+            return "You were at a famous game"
+        case .backup:
+            return "Protect your lifetime diary"
+        }
+    }
+
+    private var blurredDetail: String? {
+        switch context {
+        case .milestones(_, let sample): return sample
+        case .throwback(_, let summary): return summary
+        case .fanRecord: return "Your record by team, day vs. night, home vs. road"
+        case .wrapped: return "Share your season recap card with friends"
+        case .famousGame: return "See exactly why this night was historic"
+        case .backup: return nil
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Theme.lights.opacity(0.16)))
+                Text(headline)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+
+            if let blurredDetail {
+                HStack(spacing: 8) {
+                    Text(blurredDetail)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .blur(radius: 4)
+                        .accessibilityHidden(true)
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.lights)
+                }
+                .padding(.leading, 46)
+            }
+
+            Text("Unlock Pro to see it all.")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.lights)
+                .padding(.leading, 46)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.lights.opacity(0.07))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Theme.lights.opacity(0.35), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(headline). Unlock Pro to see it all.")
+    }
 }

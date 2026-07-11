@@ -397,6 +397,204 @@ struct NeutralGameStatsTests {
     }
 }
 
+// MARK: - Famous game detection
+
+struct HistoricGameTests {
+
+    private func game(
+        homeScore: Int = 5, awayScore: Int = 3,
+        highlights: [AttendedGame.Highlight] = [],
+        milestones: [PlayerMilestone] = [],
+        upcoming: Bool = false
+    ) -> AttendedGame {
+        AttendedGame(
+            id: UUID(), date: Date(timeIntervalSince1970: 1_660_000_000),
+            ballparkId: "yankee-stadium", homeTeamId: "nyy", awayTeamId: "bos",
+            homeScore: homeScore, awayScore: awayScore, userRootedForHome: true,
+            section: "", row: "", seat: "", confirmation: nil,
+            weather: .clear, firstPitchTempF: 70, attendance: 40000, durationMinutes: 180,
+            highlights: highlights, milestones: milestones, pitching: [],
+            companions: "", memory: "", emailSubject: "t", source: "Test",
+            status: upcoming ? .upcoming : .completed, isVerified: true
+        )
+    }
+
+    private func milestone(title: String, category: PlayerMilestone.Category) -> PlayerMilestone {
+        PlayerMilestone(
+            id: UUID(), playerName: "Aaron Judge", teamId: "nyy",
+            title: title, category: category, stat: "s", detail: "d", context: "c", inning: nil
+        )
+    }
+
+    @Test func noHitterIsHistoric() {
+        let g = game(milestones: [milestone(title: "No-Hitter", category: .noHitter)])
+        #expect(g.isHistoric)
+        #expect(g.historicNote?.contains("no-hitter") == true)
+    }
+
+    @Test func perfectGameOutranksNoHitter() {
+        let g = game(milestones: [milestone(title: "Perfect Game", category: .noHitter)])
+        #expect(g.historicNote?.contains("perfect game") == true)
+    }
+
+    @Test func exactCareerMilestoneIsHistoricButChasingIsNot() {
+        let exact = game(milestones: [milestone(title: "500th Career Home Run", category: .homeRun)])
+        #expect(exact.isHistoric)
+
+        let chasing = game(milestones: [milestone(title: "Career HR #497 \u{2014} Chasing 500", category: .homeRun)])
+        #expect(!chasing.isHistoric, "A chasing milestone is not itself a historic mark")
+    }
+
+    @Test func walkoffIsHistoric() {
+        let g = game(highlights: [AttendedGame.Highlight(inning: "B9", description: "walk-off single", kind: .walkoff)])
+        #expect(g.historicNote?.contains("walk-off") == true)
+    }
+
+    @Test func marathonAndBlowoutAreHistoric() {
+        let marathon = game(highlights: [AttendedGame.Highlight(inning: "T16", description: "RBI double", kind: .hit)])
+        #expect(marathon.historicNote?.contains("marathon") == true)
+
+        let blowout = game(homeScore: 22, awayScore: 4)
+        #expect(blowout.historicNote?.contains("blowout") == true)
+    }
+
+    @Test func ordinaryAndUpcomingGamesAreNotHistoric() {
+        #expect(!game().isHistoric)
+        #expect(!game(milestones: [milestone(title: "No-Hitter", category: .noHitter)], upcoming: true).isHistoric,
+                "Upcoming games can never be historic")
+    }
+}
+
+// MARK: - Fan record deep splits & milestone teaser
+
+@MainActor
+struct FanRecordInsightTests {
+
+    private func game(
+        on date: Date,
+        rootedForHome: Bool?,
+        homeScore: Int, awayScore: Int,
+        weather: AttendedGame.Weather = .clear,
+        milestones: [PlayerMilestone] = []
+    ) -> AttendedGame {
+        AttendedGame(
+            id: UUID(), date: date,
+            ballparkId: "yankee-stadium", homeTeamId: "nyy", awayTeamId: "bos",
+            homeScore: homeScore, awayScore: awayScore, userRootedForHome: rootedForHome,
+            section: "", row: "", seat: "", confirmation: nil,
+            weather: weather, firstPitchTempF: 70, attendance: 40000, durationMinutes: 180,
+            highlights: [], milestones: milestones, pitching: [],
+            companions: "", memory: "", emailSubject: "t", source: "Test",
+            status: .completed, isVerified: true
+        )
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int, hour: Int = 13) -> Date {
+        DateComponents(calendar: .init(identifier: .gregorian), year: year, month: month, day: day, hour: hour).date!
+    }
+
+    /// Records split correctly by rooted team, day/night, and home/away.
+    @Test func fanRecordSplitsAreCorrect() {
+        let store = DiaryStore()
+        var added: [AttendedGame] = []
+
+        // Rooted home (nyy), day, WIN
+        if let g = store.addManualGame(game(on: date(1991, 5, 1), rootedForHome: true, homeScore: 5, awayScore: 2, weather: .clear)) { added.append(g) }
+        // Rooted home (nyy), night, LOSS
+        if let g = store.addManualGame(game(on: date(1991, 5, 2), rootedForHome: true, homeScore: 1, awayScore: 4, weather: .night)) { added.append(g) }
+        // Rooted away (bos), day, WIN (away won)
+        if let g = store.addManualGame(game(on: date(1991, 5, 3), rootedForHome: false, homeScore: 2, awayScore: 6, weather: .clear)) { added.append(g) }
+        // Neutral — must not appear in any split
+        if let g = store.addManualGame(game(on: date(1991, 5, 4), rootedForHome: nil, homeScore: 3, awayScore: 1)) { added.append(g) }
+
+        defer { for g in added { store.deleteGame(g.id) } }
+
+        let nyy = store.fanRecordByTeam.first { $0.team.id == "nyy" }
+        #expect(nyy?.wins ?? -1 >= 1)
+        #expect(nyy?.losses ?? -1 >= 1)
+
+        let bos = store.fanRecordByTeam.first { $0.team.id == "bos" }
+        #expect(bos?.wins ?? 0 >= 1)
+
+        let day = store.dayNightSplits.first { $0.label.contains("Day") }
+        let night = store.dayNightSplits.first { $0.label.contains("Night") }
+        #expect((day?.wins ?? 0) >= 2, "Both day wins should count")
+        #expect((night?.losses ?? 0) >= 1)
+
+        let road = store.homeAwaySplits.first { $0.label.contains("road") }
+        #expect((road?.wins ?? 0) >= 1, "Rooting for the visitors and winning counts as a road win")
+    }
+
+    /// The free milestone is the FIRST milestone of the chronologically
+    /// earliest game that has any — and only that one is free.
+    @Test func firstWitnessedMilestoneIsChronological() {
+        let store = DiaryStore()
+        var added: [AttendedGame] = []
+
+        let early = PlayerMilestone(id: UUID(), playerName: "Early Player", teamId: "nyy", title: "No-Hitter", category: .noHitter, stat: "s", detail: "d", context: "c", inning: nil)
+        let late = PlayerMilestone(id: UUID(), playerName: "Late Player", teamId: "bos", title: "15-Strikeout Game", category: .strikeouts, stat: "s", detail: "d", context: "c", inning: nil)
+
+        if let g = store.addManualGame(game(on: date(1992, 6, 10), rootedForHome: true, homeScore: 2, awayScore: 0, milestones: [early])) { added.append(g) }
+        if let g = store.addManualGame(game(on: date(1993, 7, 11), rootedForHome: true, homeScore: 3, awayScore: 1, milestones: [late])) { added.append(g) }
+
+        defer { for g in added { store.deleteGame(g.id) } }
+
+        // The diary may contain other milestone games from persisted state, so
+        // assert relative ordering instead of exact identity: the free milestone's
+        // game must not be newer than our 1992 entry.
+        let free = store.firstWitnessedMilestone
+        #expect(free != nil)
+        #expect(free!.game.date <= date(1992, 6, 10, hour: 23))
+        #expect(store.totalMilestonesWitnessed >= 2)
+
+        if let firstGame = added.first, let freeMilestone = free?.milestone,
+           free?.game.id == firstGame.id {
+            #expect(store.isFreeMilestone(freeMilestone, in: firstGame))
+            #expect(!store.isFreeMilestone(late, in: added[1]))
+        }
+    }
+
+    /// Season streak counts consecutive years back from the latest active
+    /// season and dies when the latest season is too old.
+    @Test func seasonStreakRequiresRecentSeason() {
+        let store = DiaryStore()
+        // Whatever the current diary state, the invariant holds: a streak > 0
+        // implies games in this year or last year.
+        let years = Set(store.completedGames.map { Calendar.current.component(.year, from: $0.date) })
+        let currentYear = Calendar.current.component(.year, from: .now)
+        if store.seasonStreak > 0 {
+            #expect(years.contains(currentYear) || years.contains(currentYear - 1))
+        }
+        // gamesThisSeason only counts the current calendar year.
+        let manual = store.completedGames.filter { Calendar.current.component(.year, from: $0.date) == currentYear }
+        #expect(store.gamesThisSeason == manual.count)
+    }
+}
+
+// MARK: - Widget snapshot encoding
+
+struct WidgetSnapshotTests {
+
+    /// The snapshot the app writes must decode with the exact shape the
+    /// widget target mirrors — a field rename here would silently blank the widget.
+    @Test func snapshotRoundTripsThroughJSON() throws {
+        let snapshot = WidgetSnapshot(
+            totalGames: 12, parksVisited: 4,
+            seasonYear: 2026, seasonGames: 3, seasonWins: 2, seasonLosses: 1,
+            favoriteTeamAbbreviation: "NYY",
+            nextGameDate: Date(timeIntervalSince1970: 1_790_000_000),
+            nextGameMatchup: "BOS @ NYY",
+            nextGameBallpark: "Yankee Stadium",
+            updatedAt: .now
+        )
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: data)
+        #expect(decoded.totalGames == 12)
+        #expect(decoded.seasonWins == 2)
+        #expect(decoded.nextGameMatchup == "BOS @ NYY")
+    }
+}
+
 // MARK: - Verified save preserves rooting, companions, and memory
 
 @MainActor

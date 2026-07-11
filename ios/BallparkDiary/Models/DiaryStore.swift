@@ -106,6 +106,9 @@ final class DiaryStore {
         load()
         collapseDuplicates()
         autoDeleteDuplicates = defaults.bool(forKey: autoDeleteKey)
+        // Publish the initial widget snapshot so a fresh install / cold launch
+        // has data on the home screen without waiting for the first save.
+        WidgetSnapshotService.update(from: self)
     }
 
     /// Persisted choice of the user's home team. Used to pre-rotate the map
@@ -1632,6 +1635,12 @@ final class DiaryStore {
         }
         // Keep game-day reminders in sync with the upcoming schedule.
         NotificationService.shared.syncIfEnabled(upcoming: upcomingGames)
+        // Refresh the home-screen widget with the latest stats.
+        WidgetSnapshotService.update(from: self)
+        // Automatic iCloud backup (Pro perk) while enabled.
+        if CloudBackupService.shared.isEnabled, let backup = exportData() {
+            CloudBackupService.shared.backup(backup)
+        }
     }
 
     private func load() {

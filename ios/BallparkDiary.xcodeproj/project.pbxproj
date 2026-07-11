@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		XX298127CFBB2CF3FA631BXX /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = XXDCC169DE7B2F3C1C8B10XX /* RevenueCat */; };
 		XX6B55EF5BDBB06FA78746XX /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = XX1523791DAAC03A11009CXX /* GoogleSignInSwift */; };
+		XX7521824E5AB5BD1FF23DXX /* BallparkDiaryWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = XXE72CA801672E1732D803XX /* BallparkDiaryWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		XX7F1B8E6FDB381349452FXX /* BallparkDiaryShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = XXF244FB8EEA078AF198D3XX /* BallparkDiaryShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		XXC2732D520C02064817F5XX /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = XXB48B343CDA2FFA072770XX /* GoogleSignIn */; };
 /* End PBXBuildFile section */
@@ -35,6 +36,13 @@
 			remoteGlobalIDString = XX3EFC4A34D6A0D57BFDF6XX;
 			remoteInfo = BallparkDiaryShare;
 		};
+		XX73FE4F54C0BFBEAB7DA2XX /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 105FC5722E9EAD3100EA8BCF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = XX2749405425BE3DF8CAEAXX;
+			remoteInfo = BallparkDiaryWidget;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -45,6 +53,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				XX7F1B8E6FDB381349452FXX /* BallparkDiaryShare.appex in Embed Foundation Extensions */,
+				XX7521824E5AB5BD1FF23DXX /* BallparkDiaryWidget.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -55,18 +64,26 @@
 		105FC57A2E9EAD3100EA8BCF /* BallparkDiary.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BallparkDiary.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		105FC5892E9EAD3200EA8BCF /* BallparkDiaryTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BallparkDiaryTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		105FC5932E9EAD3200EA8BCF /* BallparkDiaryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BallparkDiaryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		XXE72CA801672E1732D803XX /* BallparkDiaryWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BallparkDiaryWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		XXF244FB8EEA078AF198D3XX /* BallparkDiaryShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BallparkDiaryShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		10EXCEPT01PLISTEXCEPTION /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		10EXCEPT01PLISTEXCEPTION /* Exceptions for "BallparkDiary" folder in "BallparkDiary" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
 			target = 105FC5792E9EAD3100EA8BCF /* BallparkDiary */;
 		};
-		XXC96152E9F9F98464F45DXX /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		XX1DF79DA479D128C7D9E1XX /* Exceptions for "BallparkDiaryWidget" folder in "BallparkDiaryWidget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = XX2749405425BE3DF8CAEAXX /* BallparkDiaryWidget */;
+		};
+		XXC96152E9F9F98464F45DXX /* Exceptions for "BallparkDiaryShare" folder in "BallparkDiaryShare" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -76,12 +93,38 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		105FC57C2E9EAD3100EA8BCF /* BallparkDiary */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				10EXCEPT01PLISTEXCEPTION /* Exceptions for "BallparkDiary" folder in "BallparkDiary" target */,
+			);
+			path = BallparkDiary;
+			sourceTree = "<group>";
+		};
+		105FC58C2E9EAD3200EA8BCF /* BallparkDiaryTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BallparkDiaryTests;
+			sourceTree = "<group>";
+		};
+		105FC5962E9EAD3200EA8BCF /* BallparkDiaryUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BallparkDiaryUITests;
+			sourceTree = "<group>";
+		};
 		XX88087415D9F570AF7652XX /* BallparkDiaryShare */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = BallparkDiaryShare;
 			sourceTree = "<group>";
 			exceptions = (
-				XXC96152E9F9F98464F45DXX /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+				XXC96152E9F9F98464F45DXX /* Exceptions for "BallparkDiaryShare" folder in "BallparkDiaryShare" target */,
+			);
+		};
+		XX97980E483184B1122B0DXX /* BallparkDiaryWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BallparkDiaryWidget;
+			sourceTree = "<group>";
+			exceptions = (
+				XX1DF79DA479D128C7D9E1XX /* Exceptions for "BallparkDiaryWidget" folder in "BallparkDiaryWidget" target */,
 			);
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -118,28 +161,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXFrameworksBuildPhase section */
-
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		105FC57C2E9EAD3100EA8BCF /* BallparkDiary */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				10EXCEPT01PLISTEXCEPTION /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+		XXE5D12AE62DFE655206A8XX /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
-			path = BallparkDiary;
-			sourceTree = "<group>";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
-		105FC58C2E9EAD3200EA8BCF /* BallparkDiaryTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = BallparkDiaryTests;
-			sourceTree = "<group>";
-		};
-		105FC5962E9EAD3200EA8BCF /* BallparkDiaryUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = BallparkDiaryUITests;
-			sourceTree = "<group>";
-		};
-/* End PBXFileSystemSynchronizedRootGroup section */
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		105FC5712E9EAD3100EA8BCF = {
@@ -150,6 +179,7 @@
 				105FC5962E9EAD3200EA8BCF /* BallparkDiaryUITests */,
 				105FC57B2E9EAD3100EA8BCF /* Products */,
 				XX88087415D9F570AF7652XX /* BallparkDiaryShare */,
+				XX97980E483184B1122B0DXX /* BallparkDiaryWidget */,
 			);
 			sourceTree = "<group>";
 		};
@@ -160,6 +190,7 @@
 				105FC5892E9EAD3200EA8BCF /* BallparkDiaryTests.xctest */,
 				105FC5932E9EAD3200EA8BCF /* BallparkDiaryUITests.xctest */,
 				XXF244FB8EEA078AF198D3XX /* BallparkDiaryShare.appex */,
+				XXE72CA801672E1732D803XX /* BallparkDiaryWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -180,6 +211,7 @@
 			);
 			dependencies = (
 				XX60CC011F9A2CC27C1BF7XX /* PBXTargetDependency */,
+				XX1228DED01B538A3C7B77XX /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				105FC57C2E9EAD3100EA8BCF /* BallparkDiary */,
@@ -239,6 +271,26 @@
 			productName = BallparkDiaryUITests;
 			productReference = 105FC5932E9EAD3200EA8BCF /* BallparkDiaryUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		XX2749405425BE3DF8CAEAXX /* BallparkDiaryWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = XX9BCDC61B3E3148374F8CXX /* Build configuration list for PBXNativeTarget "BallparkDiaryWidget" */;
+			buildPhases = (
+				XX7B303903ED09A0866A1DXX /* Sources */,
+				XXE5D12AE62DFE655206A8XX /* Frameworks */,
+				XX14D2D5FF08BB86CE3841XX /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BallparkDiaryWidget;
+			productName = BallparkDiaryWidget;
+			productReference = XXE72CA801672E1732D803XX /* BallparkDiaryWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+			fileSystemSynchronizedGroups = (
+				XX97980E483184B1122B0DXX /* BallparkDiaryWidget */,
+			);
 		};
 		XX3EFC4A34D6A0D57BFDF6XX /* BallparkDiaryShare */ = {
 			isa = PBXNativeTarget;
@@ -301,6 +353,7 @@
 				105FC5882E9EAD3200EA8BCF /* BallparkDiaryTests */,
 				105FC5922E9EAD3200EA8BCF /* BallparkDiaryUITests */,
 				XX3EFC4A34D6A0D57BFDF6XX /* BallparkDiaryShare */,
+				XX2749405425BE3DF8CAEAXX /* BallparkDiaryWidget */,
 			);
 			packageReferences = (
 				XX5E367D25F4C8BB4A06F5XX /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
@@ -325,6 +378,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		105FC5912E9EAD3200EA8BCF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		XX14D2D5FF08BB86CE3841XX /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -362,6 +422,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		XX7B303903ED09A0866A1DXX /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		XXE0FD6AFA7551401BFCEBXX /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -381,6 +448,11 @@
 			isa = PBXTargetDependency;
 			target = 105FC5792E9EAD3100EA8BCF /* BallparkDiary */;
 			targetProxy = 105FC5942E9EAD3200EA8BCF /* PBXContainerItemProxy */;
+		};
+		XX1228DED01B538A3C7B77XX /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = XX2749405425BE3DF8CAEAXX /* BallparkDiaryWidget */;
+			targetProxy = XX73FE4F54C0BFBEAB7DA2XX /* PBXContainerItemProxy */;
 		};
 		XX60CC011F9A2CC27C1BF7XX /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -688,6 +760,29 @@
 			};
 			name = Debug;
 		};
+		XX2C89979785E0929BA8CEXX /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.w8eewhvpa28g5c9ao7fpw.ballparkdiarywidget;
+				PRODUCT_NAME = BallparkDiaryWidget;
+				SDKROOT = iphoneos;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BallparkDiaryWidget/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = BallparkDiaryWidget/BallparkDiaryWidget.entitlements;
+				SWIFT_VERSION = 5.0;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
+			};
+			name = Debug;
+		};
 		XX304322772618130F7ED3XX /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -706,6 +801,29 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				MARKETING_VERSION = 1.0.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
+			};
+			name = Release;
+		};
+		XX409E6E924007EAC5CC1BXX /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = app.rork.w8eewhvpa28g5c9ao7fpw.ballparkdiarywidget;
+				PRODUCT_NAME = BallparkDiaryWidget;
+				SDKROOT = iphoneos;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BallparkDiaryWidget/Info.plist;
+				CODE_SIGN_ENTITLEMENTS = BallparkDiaryWidget/BallparkDiaryWidget.entitlements;
+				SWIFT_VERSION = 5.0;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				INFOPLIST_KEY_CFBundleDisplayName = "$(PRODUCT_NAME)";
 			};
@@ -755,6 +873,15 @@
 			buildConfigurations = (
 				XX241DD68C3A23F23C4538XX /* Debug */,
 				XX304322772618130F7ED3XX /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		XX9BCDC61B3E3148374F8CXX /* Build configuration list for PBXNativeTarget "BallparkDiaryWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				XX2C89979785E0929BA8CEXX /* Debug */,
+				XX409E6E924007EAC5CC1BXX /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

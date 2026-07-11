@@ -7,6 +7,7 @@ struct StatsView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(StoreViewModel.self) private var storeKit
     @State private var showPaywall: Bool = false
+    @State private var paywallContext: PaywallContext? = nil
 
     var body: some View {
         NavigationStack {
@@ -63,6 +64,20 @@ struct StatsView: View {
                         // Record / win pct
                         RecordCard()
                             .padding(.horizontal, 16)
+
+                        // Fan record deep splits (Pro)
+                        if !store.rootedGames.isEmpty {
+                            if storeKit.isPremium {
+                                FanRecordCard()
+                                    .padding(.horizontal, 16)
+                            } else {
+                                LockedFanRecordCard(onUnlock: {
+                                    paywallContext = .fanRecord(wins: store.winCount, losses: store.lossCount)
+                                    showPaywall = true
+                                })
+                                .padding(.horizontal, 16)
+                            }
+                        }
 
                         // Lucky charm
                         LuckyCharmCard()
@@ -131,9 +146,175 @@ struct StatsView: View {
                 GameDetailView(game: game)
             }
             .sheet(isPresented: $showPaywall) {
-                PaywallView(store: storeKit)
+                PaywallView(store: storeKit, context: paywallContext)
             }
         }
+    }
+}
+
+// MARK: - Fan record deep splits (Pro)
+
+/// "You're 9–2 when the Yankees are in town" — lifetime record broken down
+/// by rooted team, day vs. night, and home vs. road. Data no one else has.
+private struct FanRecordCard: View {
+    @Environment(DiaryStore.self) private var store
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+                Text("Fan record")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text("PRO")
+                    .font(.caps(9, weight: .heavy))
+                    .tracking(2)
+                    .foregroundStyle(Theme.lights)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Theme.lights.opacity(0.16)))
+            }
+
+            // By team
+            let teamRecords = store.fanRecordByTeam.prefix(5)
+            if !teamRecords.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(Array(teamRecords)) { record in
+                        HStack(spacing: 10) {
+                            TeamLogoView(team: record.team, size: 26, showGloss: false)
+                            Text(record.team.fullName)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(record.wins)\u{2013}\(record.losses)")
+                                .font(.stat(14, weight: .heavy))
+                                .foregroundStyle(record.winPct >= 0.5 ? Theme.grass : Theme.foul)
+                        }
+                    }
+                }
+            }
+
+            Divider().background(Color.white.opacity(0.08))
+
+            // Situational splits
+            VStack(spacing: 8) {
+                ForEach(store.dayNightSplits + store.homeAwaySplits, id: \.label) { split in
+                    if split.games > 0 {
+                        HStack(spacing: 10) {
+                            Image(systemName: splitSymbol(split.label))
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Theme.lights)
+                                .frame(width: 24)
+                            Text(split.label)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                            Spacer()
+                            Text("\(split.wins)\u{2013}\(split.losses)")
+                                .font(.stat(14, weight: .heavy))
+                                .foregroundStyle(split.wins >= split.losses ? Theme.grass : Theme.foul)
+                        }
+                    }
+                }
+            }
+
+            if let blurb = bestSplitBlurb {
+                Text(blurb)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.lights)
+                    .padding(.top, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .nightCard()
+    }
+
+    private func splitSymbol(_ label: String) -> String {
+        if label.contains("Day") { return "sun.max.fill" }
+        if label.contains("Night") { return "moon.stars.fill" }
+        if label.contains("home") { return "house.fill" }
+        return "car.fill"
+    }
+
+    /// One irresistible sentence about the user's best team record (min 3 games).
+    private var bestSplitBlurb: String? {
+        guard let best = store.fanRecordByTeam.filter({ $0.games >= 3 }).max(by: { $0.winPct < $1.winPct }),
+              best.winPct >= 0.6 else { return nil }
+        return "You're \(best.wins)\u{2013}\(best.losses) when the \(best.team.name) play in front of you."
+    }
+}
+
+/// Free tease of the fan record — their real headline record with the deep
+/// splits blurred behind the lock.
+private struct LockedFanRecordCard: View {
+    @Environment(DiaryStore.self) private var store
+    let onUnlock: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Fan record")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.lights)
+            }
+
+            Text("You're \(store.winCount)\u{2013}\(store.lossCount) lifetime. How does that break down by team, day vs. night, home vs. road?")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Blurred fake-out rows built from real team names
+            VStack(spacing: 6) {
+                ForEach(Array(store.fanRecordByTeam.prefix(2))) { record in
+                    HStack(spacing: 10) {
+                        TeamLogoView(team: record.team, size: 22, showGloss: false)
+                        Text(record.team.fullName)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                        Spacer()
+                        Text("\(record.wins)\u{2013}\(record.losses)")
+                            .font(.stat(13, weight: .heavy))
+                            .foregroundStyle(Theme.textPrimary)
+                            .blur(radius: 5)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
+
+            Button(action: onUnlock) {
+                HStack(spacing: 6) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Unlock your deep stats with Pro")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(Theme.lights)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.lights.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Theme.lights.opacity(0.3), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .nightCard()
     }
 }
 
