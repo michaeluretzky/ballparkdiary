@@ -51,17 +51,26 @@ struct MainTabsView: View {
                 .tag(Tab.profile)
         }
         .tint(Theme.clay)
-        .onChange(of: store.requestedTab) { _, newValue in
-            guard let tab = newValue else { return }
-            switch tab {
-            case "diary": selection = .diary
-            case "map": selection = .map
-            case "stats": selection = .stats
-            case "inboxes": selection = .inboxes
-            case "profile": selection = .profile
-            default: break
-            }
-            store.requestedTab = nil
+        .onChange(of: store.requestedTab) { _, _ in
+            applyRequestedTab()
         }
+        .onAppear {
+            // A deep link (share-extension cold launch) can set requestedTab
+            // before this view mounts, so onChange never fires — apply it here too.
+            applyRequestedTab()
+        }
+    }
+
+    private func applyRequestedTab() {
+        guard let tab = store.requestedTab else { return }
+        switch tab {
+        case "diary": selection = .diary
+        case "map": selection = .map
+        case "stats": selection = .stats
+        case "inboxes": selection = .inboxes
+        case "profile": selection = .profile
+        default: break
+        }
+        store.requestedTab = nil
     }
 }

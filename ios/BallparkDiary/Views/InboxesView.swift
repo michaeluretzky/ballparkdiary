@@ -26,7 +26,7 @@ struct InboxesView: View {
                         }
 
                         if !storeKit.isPremium {
-                            ProUpgradeBanner { showPaywall = true }
+                            ProUpgradeBanner(priceText: storeKit.lifetimePriceString) { showPaywall = true }
                         }
 
                         VStack(alignment: .leading, spacing: 10) {
@@ -245,6 +245,11 @@ private struct ShareStep: View {
 private struct InboxRow: View {
     @Environment(DiaryStore.self) private var store
     let inbox: ConnectedInbox
+    @State private var showRemoveConfirm = false
+
+    private var gamesLabel: String {
+        "\(inbox.ticketsFound) \(inbox.ticketsFound == 1 ? "game" : "games")"
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -259,7 +264,7 @@ private struct InboxRow: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
-                Text("\(inbox.ticketsFound) \(inbox.ticketsFound == 1 ? "game" : "games") · \(inbox.provider.name)")
+                Text("\(gamesLabel) · \(inbox.provider.name)")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -268,7 +273,7 @@ private struct InboxRow: View {
 
             Menu {
                 Button(role: .destructive) {
-                    store.disconnect(inbox)
+                    showRemoveConfirm = true
                 } label: {
                     Label("Remove source", systemImage: "trash")
                 }
@@ -280,9 +285,24 @@ private struct InboxRow: View {
                     .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
+            .accessibilityLabel("Source options")
         }
         .padding(14)
         .nightCard()
+        .confirmationDialog(
+            "Remove this source?",
+            isPresented: $showRemoveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Remove \(gamesLabel)", role: .destructive) {
+                withAnimation { store.disconnect(inbox) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(inbox.ticketsFound > 0
+                 ? "This permanently deletes \(gamesLabel) added from \(inbox.provider.name). This can't be undone."
+                 : "This removes \(inbox.provider.name) from your sources.")
+        }
     }
 }
 
@@ -315,7 +335,14 @@ private struct EmptyInboxesHint: View {
 // MARK: - Pro Upgrade Banner
 
 private struct ProUpgradeBanner: View {
+    var priceText: String?
     let action: () -> Void
+
+    private var subtitle: String {
+        let base = "Milestones, share cards & the 30-park quest"
+        if let priceText { return "\(base) · \(priceText) lifetime" }
+        return base
+    }
 
     var body: some View {
         Button(action: action) {
@@ -330,7 +357,7 @@ private struct ProUpgradeBanner: View {
                     Text("Ballpark Diary Pro")
                         .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Wrapped, share cards & more · $9.99 lifetime")
+                    Text(subtitle)
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(2)

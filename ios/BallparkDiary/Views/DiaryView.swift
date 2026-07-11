@@ -11,17 +11,6 @@ struct DiaryView: View {
     @State private var yearFilter: Int? = nil
     @State private var teamFilter: String? = nil
 
-    init() {
-        let appearance = UINavigationBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(Theme.nightDeep.opacity(0.95))
-        appearance.largeTitleTextAttributes = [.foregroundColor: UIColor.white]
-        appearance.titleTextAttributes = [.foregroundColor: UIColor.white]
-        UINavigationBar.appearance().standardAppearance = appearance
-        UINavigationBar.appearance().scrollEdgeAppearance = appearance
-        UINavigationBar.appearance().compactAppearance = appearance
-    }
-
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
@@ -31,13 +20,6 @@ struct DiaryView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 40)
                     } else {
-                        Text("Diary")
-                            .font(.system(size: 34, weight: .black))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-
                         DiaryHeader()
                             .padding(.horizontal, 16)
                             .padding(.top, 8)
@@ -55,12 +37,12 @@ struct DiaryView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
                                     Circle()
-                                        .fill(store.favoriteTeam.primary)
+                                        .fill(store.favoriteTeam.accentOnDark)
                                         .frame(width: 8, height: 8)
                                     Text("ON DECK")
                                         .font(.caps(11, weight: .heavy))
                                         .tracking(3)
-                                        .foregroundStyle(store.favoriteTeam.primary)
+                                        .foregroundStyle(store.favoriteTeam.accentOnDark)
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.top, 6)
@@ -92,7 +74,7 @@ struct DiaryView: View {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
                                     Rectangle()
-                                        .fill(store.favoriteTeam.primary.opacity(0.6))
+                                        .fill(store.favoriteTeam.accentOnDark.opacity(0.6))
                                         .frame(width: 32, height: 3)
                                         .clipShape(.capsule)
                                     Text(group.0)
@@ -124,14 +106,25 @@ struct DiaryView: View {
                                 }
                             }
                         }
+
+                        if filteredGroupedGames.isEmpty && (yearFilter != nil || teamFilter != nil) {
+                            NoFilterMatchView {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    yearFilter = nil
+                                    teamFilter = nil
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 24)
+                        }
                     }
 
                     Color.clear.frame(height: 40)
 
                     if !store.games.isEmpty {
                         Text("Ballpark Diary is an independent app. Not affiliated with or endorsed by Major League Baseball, any MLB team, or any player.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.25))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.5))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 40)
                             .padding(.bottom, 20)
@@ -144,7 +137,7 @@ struct DiaryView: View {
             }
             .navigationTitle("Diary")
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(Theme.nightDeep.opacity(0.95), for: .navigationBar)
             .toolbar {
@@ -153,14 +146,16 @@ struct DiaryView: View {
                         showAddSheet = true
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(store.favoriteTeam.primary)
-                            .frame(width: 32, height: 32)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(store.favoriteTeam.accentOnDark)
+                            .frame(width: 44, height: 44)
                             .background(
                                 Circle()
-                                    .fill(store.favoriteTeam.primary.opacity(0.15))
+                                    .fill(store.favoriteTeam.accentOnDark.opacity(0.15))
                             )
+                            .contentShape(Circle())
                     }
+                    .accessibilityLabel("Add a game")
                 }
             }
             .refreshable {
@@ -262,7 +257,6 @@ struct DiaryView: View {
 
 private struct DiaryHeader: View {
     @Environment(DiaryStore.self) private var store
-    private var tc: TeamColors { .from(team: store.favoriteTeam) }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -278,7 +272,7 @@ private struct DiaryHeader: View {
         .nightCard()
         .overlay(alignment: .topLeading) {
             Rectangle()
-                .fill(tc.primary)
+                .fill(store.favoriteTeam.accentOnDark)
                 .frame(width: 40, height: 3)
                 .clipShape(.capsule)
                 .padding(.horizontal, 16)
@@ -333,13 +327,7 @@ struct GameCard: View {
                 .padding(.top, 10)
 
                 HStack(spacing: 8) {
-                    Image(systemName: "mappin")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(TeamColors.from(team: game.homeTeam).primary)
-                    Text(game.ballpark.name)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+                    resultChip
                     Spacer()
                     if let conf = game.confirmationNumber {
                         Text("#\(conf)")
@@ -360,6 +348,68 @@ struct GameCard: View {
         }
         .clipShape(.rect(cornerRadius: 16))
         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    /// A single spoken summary of the card so VoiceOver reads one coherent line
+    /// instead of a dozen fragments (logos, "@", score digits, icons).
+    private var accessibilitySummary: String {
+        let matchup = "\(game.awayTeam.fullName) at \(game.homeTeam.fullName)"
+        let date = game.date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted))
+        if game.isUpcoming {
+            return "\(matchup), \(game.ballpark.name), \(date). Upcoming game."
+        }
+        let result: String
+        if game.userRootedForHome != nil {
+            result = game.userWon
+                ? "you won, \(game.awayScore) to \(game.homeScore)"
+                : "you lost, \(game.awayScore) to \(game.homeScore)"
+        } else {
+            result = "final score \(game.awayScore) to \(game.homeScore)"
+        }
+        return "\(matchup), \(game.ballpark.name), \(date), \(result)."
+    }
+
+    // MARK: Result chip
+
+    /// The bottom row of the card. The ballpark name already appears on the hero
+    /// image, so this row carries the outcome instead: a W/L badge for games the
+    /// user rooted in, the score for neutral games, or first pitch for upcoming.
+    @ViewBuilder
+    private var resultChip: some View {
+        if game.isUpcoming {
+            HStack(spacing: 5) {
+                Image(systemName: "clock")
+                    .font(.system(size: 9, weight: .bold))
+                Text("First pitch \(game.date.formatted(.dateTime.hour().minute()))")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(Theme.lights)
+        } else if game.userRootedForHome != nil {
+            HStack(spacing: 6) {
+                Text(game.userWon ? "W" : "L")
+                    .font(.stat(11, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .frame(width: 18, height: 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(game.userWon ? Theme.grass : Theme.foul)
+                    )
+                Text(game.scoreString)
+                    .font(.stat(11, weight: .heavy))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        } else {
+            HStack(spacing: 5) {
+                Image(systemName: "baseball")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                Text(game.scoreString)
+                    .font(.stat(11, weight: .heavy))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        }
     }
 
     // MARK: Hero
@@ -453,6 +503,39 @@ private struct TeamChip: View {
     }
 }
 
+// MARK: - No filter matches
+
+private struct NoFilterMatchView: View {
+    let clear: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(.white.opacity(0.4))
+            Text("No games match these filters")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+            Button(action: clear) {
+                Text("Clear filters")
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(Theme.clay))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Removes the active year and team filters")
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.card.opacity(0.5))
+        )
+    }
+}
+
 // MARK: - Empty diary
 
 private struct EmptyDiaryView: View {
@@ -497,7 +580,7 @@ private struct EmptyDiaryView: View {
                 )
                 EmptyTip(
                     icon: "square.and.pencil",
-                    color: store.favoriteTeam.primary,
+                    color: store.favoriteTeam.accentOnDark,
                     text: "Or tap 'Add a Game' in Sources to log an older stub."
                 )
             }

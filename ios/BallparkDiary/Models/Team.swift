@@ -16,21 +16,17 @@ struct Team: Identifiable, Hashable {
 }
 
 extension Team {
-    /// Returns a fill color for the logo circle that stays visible against
-    /// the app's dark night background. Teams with dark primary colors
-    /// (e.g. Yankees navy, White Sox black) use their brighter secondary
-    /// instead; teams with bright primaries keep them.
-    var adaptiveCircleFill: Color {
+    /// A version of the team's identity color that stays legible when used for
+    /// TEXT, ICONS, or thin rules on the app's dark night background. Very dark
+    /// primaries (Yankees/Tigers navy, White Sox black) — which are all but
+    /// invisible on #0B1530 — fall back to a brighter secondary or a lightened
+    /// primary. Use this for accents on night surfaces; keep `primary` for large
+    /// filled shapes (logo circles, pins) where full saturation reads fine.
+    var accentOnDark: Color {
         let pLum = primary.luminance
-        let sLum = secondary.luminance
-        // Primary is dark enough to blend into the night background
-        if pLum < 0.18 {
-            // If secondary is noticeably brighter, use it as the fill
-            if sLum > pLum + 0.08 { return secondary }
-            // Both are dark — lighten the primary
-            return primary.lightened(by: 0.28)
-        }
-        return primary
+        guard pLum < 0.18 else { return primary }
+        if secondary.luminance > pLum + 0.10 { return secondary }
+        return primary.lightened(by: 0.35)
     }
 
     /// A glow color that separates the circle from the dark background.

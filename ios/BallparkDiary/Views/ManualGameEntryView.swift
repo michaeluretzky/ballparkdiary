@@ -8,7 +8,7 @@ struct ManualGameEntryView: View {
     @Environment(DiaryStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    @State private var date: Date = Calendar.current.date(byAdding: .year, value: -10, to: .now) ?? .now
+    @State private var date: Date = .now
     @State private var ballparkId: String = Ballpark.all[0].id
     @State private var homeTeamId: String = ""
     @State private var awayTeamId: String = Team.redSox.id
@@ -19,7 +19,6 @@ struct ManualGameEntryView: View {
     @State private var section: String = ""
     @State private var row: String = ""
     @State private var seat: String = ""
-    @State private var weather: AttendedGame.Weather = .clear
     @State private var companions: String = ""
     @State private var memory: String = ""
     @FocusState private var focusedField: Field?
@@ -331,12 +330,23 @@ struct ManualGameEntryView: View {
             return
         }
 
-        let enrichedGame: AttendedGame
+        var enrichedGame: AttendedGame
         if !baseGame.isUpcoming, let details = await MLBStatsService.shared.details(forGamePk: match.gamePk) {
             enrichedGame = baseGame.enriched(with: details)
         } else {
             enrichedGame = baseGame
         }
+
+        // Preserve the user's explicit choices — AttendedGame.from(...) derives
+        // rooting from the favorite team only and drops companions/memory, so
+        // apply the form's selections before saving the verified game.
+        let rootedForHome: Bool? = userRootedForNeither ? nil : userRootedForHome
+        enrichedGame = enrichedGame
+            .rooting(forHome: rootedForHome)
+            .withMemory(
+                companions: companions.trimmingCharacters(in: .whitespaces),
+                memory: memory.trimmingCharacters(in: .whitespaces)
+            )
 
         // Build an appropriate notice
         let notice: String?
@@ -378,7 +388,7 @@ struct ManualGameEntryView: View {
     private func makeGame(isVerified: Bool, status: AttendedGame.Status) -> AttendedGame {
         AttendedGame(
             id: UUID(),
-            date: date,
+            date: canonicalDate,
             ballparkId: ballparkId,
             homeTeamId: resolvedHomeTeamId,
             awayTeamId: awayTeamId,
@@ -389,10 +399,13 @@ struct ManualGameEntryView: View {
             row: row.isEmpty ? "—" : row,
             seat: seat.isEmpty ? "—" : seat,
             confirmation: nil,
-            weather: weather,
-            firstPitchTempF: isVerified ? 72 : 72,
-            attendance: isVerified ? ballpark.capacity : ballpark.capacity,
-            durationMinutes: isVerified ? 180 : 180,
+            weather: .clear,
+            // Unknown until verified against the box score — store 0 rather than
+            // inventing a sellout crowd / 72°F / 3-hour game that would pollute
+            // the user's real stats.
+            firstPitchTempF: 0,
+            attendance: 0,
+            durationMinutes: 0,
             highlights: [],
             milestones: [],
             pitching: [],
@@ -403,6 +416,12 @@ struct ManualGameEntryView: View {
             status: status,
             isVerified: isVerified
         )
+    }
+
+    /// The chosen date pinned to local noon so two entries of the same game don't
+    /// drift by time-of-day and slip past same-day duplicate detection.
+    private var canonicalDate: Date {
+        Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: date) ?? date
     }
 }
 
@@ -693,9 +712,11 @@ private struct ScoreStepper: View {
                 StepperButton(symbol: "minus") {
                     if value > 0 { value -= 1 }
                 }
+                .accessibilityLabel("Decrease \(label) score")
                 StepperButton(symbol: "plus") {
                     if value < 30 { value += 1 }
                 }
+                .accessibilityLabel("Increase \(label) score")
             }
         }
         .frame(maxWidth: .infinity)

@@ -10,12 +10,10 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let perks: [Perk] = [
-        Perk(symbol: "tray.full.fill", title: "Unlimited inboxes", detail: "Pull tickets from Gmail, iCloud, Outlook and more"),
-        Perk(symbol: "sparkles", title: "Ballpark Wrapped", detail: "A season recap worth sharing, every year"),
+        Perk(symbol: "trophy.fill", title: "Player milestones", detail: "See the career milestones you witnessed live, with box-score depth"),
         Perk(symbol: "square.and.arrow.up.fill", title: "Shareable game cards", detail: "Turn any game into a card to post or send"),
-        Perk(symbol: "map.fill", title: "Ballpark quest & travel map", detail: "See all 30 parks and the miles you've logged"),
-        Perk(symbol: "camera.fill", title: "Camera ticket scanning", detail: "Snap a paper stub and save the memory"),
-        Perk(symbol: "chart.bar.xaxis", title: "Deep box-score data", detail: "Player milestones and the plays worth remembering")
+        Perk(symbol: "map.fill", title: "The 30-ballpark quest", detail: "Track every park you've been to and what's left to go"),
+        Perk(symbol: "rosette", title: "Pro achievement badges", detail: "Unlock division, rivalry and road-trip badges")
     ]
 
     var body: some View {
@@ -127,7 +125,7 @@ struct PaywallView: View {
             ProgressView()
                 .tint(Theme.clay)
                 .padding(.vertical, 30)
-        } else if let pkg = lifetimePackage {
+        } else if let pkg = store.lifetimePackage {
             VStack(spacing: 12) {
                 Button {
                     Task { await store.purchase(package: pkg) }
@@ -181,10 +179,6 @@ struct PaywallView: View {
             .padding(.horizontal, 12)
     }
 
-    private var lifetimePackage: Package? {
-        guard let current = store.offerings?.current else { return nil }
-        return current.lifetime ?? current.availablePackages.first
-    }
 }
 
 private struct Perk: Identifiable {

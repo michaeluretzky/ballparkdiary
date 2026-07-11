@@ -19,6 +19,16 @@ struct MapView: View {
     @State private var discoveryFact: String = ""
 
     var body: some View {
+        NavigationStack {
+            mapContent
+                .navigationDestination(for: AttendedGame.self) { game in
+                    GameDetailView(game: game)
+                }
+                .toolbar(.hidden, for: .navigationBar)
+        }
+    }
+
+    private var mapContent: some View {
         ZStack(alignment: .top) {
             Map(position: $position, selection: Binding(get: { selected?.id }, set: { id in
                 if let id, let park = Ballpark.by(id: id) {
@@ -66,8 +76,10 @@ struct MapView: View {
                 }
 
                 // ── Division overlay labels ──
+                // Empty MapKit title so the name only renders once — via our
+                // custom Text — instead of also as the annotation's caption.
                 ForEach(divisionLabels, id: \.0) { name, center in
-                    Annotation(name, coordinate: center, anchor: .center) {
+                    Annotation("", coordinate: center, anchor: .center) {
                         Text(name)
                             .font(.caps(8, weight: .heavy))
                             .tracking(1.5)
@@ -185,7 +197,7 @@ private struct BallparkPin: View {
     let count: Int
     let isNext: Bool
     @State private var pulse: Bool = false
-    @State private var jiggle: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -239,7 +251,7 @@ private struct BallparkPin: View {
                 )
                 .shadow(color: .black.opacity(0.4), radius: 6, x: 0, y: 3)
         }
-        .onAppear { pulse = true }
+        .onAppear { pulse = !reduceMotion }
     }
 }
 
@@ -310,7 +322,7 @@ private struct NextParkBanner: View {
                             .fill(park.team.primary.opacity(0.2))
                             .frame(width: 48, height: 48)
                         Circle()
-                            .strokeBorder(park.team.primary, lineWidth: 1.5)
+                            .strokeBorder(park.team.accentOnDark, lineWidth: 1.5)
                             .frame(width: 48, height: 48)
                         TeamLogoView(team: park.team, size: 36, showGloss: false)
                     }
@@ -385,12 +397,14 @@ private struct BallparkSnapshotCard: View {
                 Spacer()
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color.white.opacity(0.06)))
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.white.opacity(0.06)).frame(width: 30, height: 30))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close")
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)

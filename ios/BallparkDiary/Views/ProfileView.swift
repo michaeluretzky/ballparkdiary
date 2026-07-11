@@ -9,7 +9,9 @@ struct ProfileView: View {
     @State private var showTeamPicker: Bool = false
     @State private var showPaywall: Bool = false
     @State private var showResetConfirm: Bool = false
+    #if DEBUG
     @State private var showDebugProToggle: Bool = false
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -31,12 +33,15 @@ struct ProfileView: View {
                         proStatusCard
                             .padding(.horizontal, 16)
 
-                        // Developer debug section (hidden — long-press pro card to reveal)
+                        // Developer debug section (hidden — long-press pro card to reveal).
+                        // DEBUG builds only; the override does not exist in release.
+                        #if DEBUG
                         if showDebugProToggle {
                             debugProSection
                                 .padding(.horizontal, 16)
                                 .padding(.top, 8)
                         }
+                        #endif
 
                         // Danger zone
                         dangerZone
@@ -213,14 +218,20 @@ struct ProfileView: View {
                 }
                 Spacer()
                 if !storeKit.isPremium {
-                    Text("$9.99")
-                        .font(.stat(15, weight: .heavy))
-                        .foregroundStyle(Theme.lights)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule().fill(Theme.lights.opacity(0.16))
-                        )
+                    if let price = storeKit.lifetimePriceString {
+                        Text(price)
+                            .font(.stat(15, weight: .heavy))
+                            .foregroundStyle(Theme.lights)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule().fill(Theme.lights.opacity(0.16))
+                            )
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Theme.lights)
+                    }
                 } else {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 16))
@@ -246,6 +257,7 @@ struct ProfileView: View {
         }
         .buttonStyle(.plain)
         .disabled(storeKit.isPremium)
+        #if DEBUG
         .onLongPressGesture(minimumDuration: 1.5) {
             #if canImport(UIKit)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -254,10 +266,12 @@ struct ProfileView: View {
                 showDebugProToggle.toggle()
             }
         }
+        #endif
     }
 
     // MARK: - Debug Pro section
 
+    #if DEBUG
     private var debugProSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
@@ -310,6 +324,7 @@ struct ProfileView: View {
                 .padding(12)
         }
     }
+    #endif
 
     // MARK: - Danger zone
 
@@ -415,11 +430,12 @@ private struct TeamPickerSheet: View {
                                                     .offset(x: 4, y: -4)
                                             }
                                         }
-                                        Text(team.fullName)
+                                        Text(team.name)
                                             .font(.system(size: 11, weight: .semibold))
                                             .foregroundStyle(Theme.textSecondary)
                                             .multilineTextAlignment(.center)
                                             .lineLimit(1)
+                                            .minimumScaleFactor(0.8)
                                     }
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)

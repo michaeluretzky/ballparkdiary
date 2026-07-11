@@ -64,8 +64,15 @@ final class DiaryStore {
     /// Minimum gap between non-forced refreshes.
     private static let refreshThrottle: TimeInterval = 60
 
+    /// The pending delayed re-check for upcoming games. Held so repeated pulls
+    /// cancel the previous timer instead of stacking dozens of sleeping tasks.
+    private var upcomingRecheckTask: Task<Void, Never>?
+
     private let defaults = UserDefaults.standard
     private let storageKey = "ballparkdiary.state.v2"
+    /// Where a raw blob that failed to decode is preserved so it is never lost
+    /// to an overwrite. Never read on the happy path.
+    private let corruptBackupKey = "ballparkdiary.state.v2.corrupt-backup"
     private let autoDeleteKey = "ballparkdiary.autoDeleteDuplicates"
 
     /// Max failed import attempts before dropping a payload.
@@ -114,11 +121,16 @@ final class DiaryStore {
     var ballparkCount: Int { visitedBallparkIds.count }
     var totalGames: Int { completedGames.count }
     var totalRuns: Int { completedGames.reduce(0) { $0 + $1.totalRuns } }
-    var winCount: Int { completedGames.filter(\.userWon).count }
-    var lossCount: Int { completedGames.count - winCount }
+
+    /// Games where the user actually had a rooting interest — the only games
+    /// that can be a "win" or a "loss". Neutral "just watching" games are
+    /// excluded so they never silently count against the user's record.
+    var rootedGames: [AttendedGame] { completedGames.filter { $0.userRootedForHome != nil } }
+    var winCount: Int { rootedGames.filter(\.userWon).count }
+    var lossCount: Int { rootedGames.count - winCount }
     var winPct: Double {
-        guard !completedGames.isEmpty else { return 0 }
-        return Double(winCount) / Double(completedGames.count)
+        guard !rootedGames.isEmpty else { return 0 }
+        return Double(winCount) / Double(rootedGames.count)
     }
 
     var homeRunsWitnessed: Int {
@@ -146,7 +158,9 @@ final class DiaryStore {
     }
 
     var longestStreak: Int {
-        let chrono = completedGames.sorted { $0.date < $1.date }
+        // Only rooted games can extend or break a win streak — a neutral game
+        // the user just watched shouldn't reset their rooting streak.
+        let chrono = rootedGames.sorted { $0.date < $1.date }
         var best = 0, run = 0
         for g in chrono { if g.userWon { run += 1; best = max(best, run) } else { run = 0 } }
         return best
@@ -208,16 +222,20 @@ final class DiaryStore {
 
     /// Month with the best win percentage (minimum 2 games). Returns (monthName, winPct, games).
     var bestMonth: (name: String, winPct: Double, games: Int)? {
-        let grouped = Dictionary(grouping: completedGames) {
+        // Win percentage only makes sense over games with a rooting interest.
+        let grouped = Dictionary(grouping: rootedGames) {
             Calendar.current.component(.month, from: $0.date)
         }
-        let formatter = DateFormatter(); formatter.dateFormat = "MMMM"
         var best: (name: String, winPct: Double, games: Int)?
         for (month, games) in grouped where games.count >= 2 {
             let wins = games.filter(\.userWon).count
             let pct = Double(wins) / Double(games.count)
             let name = Calendar.current.monthSymbols[month - 1]
-            if best == nil || pct > best!.winPct { best = (name, pct, games.count) }
+            if let current = best {
+                if pct > current.winPct { best = (name, pct, games.count) }
+            } else {
+                best = (name, pct, games.count)
+            }
         }
         return best
     }
@@ -441,10 +459,15 @@ final class DiaryStore {
     }
 
     var witnessedSundayDayGame: Bool {
-        completedGames.contains { g in
-            let weekday = Calendar.current.component(.weekday, from: g.date)
-            return weekday == 1 && g.weather == .clear
-        }
+        completedGames.contains { Self.isSundayDayGame($0) }
+    }
+
+    /// Shared rule for the "Sunday Afternoon" badge so the unlock check and the
+    /// contributing-games list in the detail sheet can never disagree.
+    static func isSundayDayGame(_ g: AttendedGame) -> Bool {
+        let weekday = Calendar.current.component(.weekday, from: g.date)
+        let daytime: Set<AttendedGame.Weather> = [.clear, .partlyCloudy, .cloudy]
+        return weekday == 1 && daytime.contains(g.weather)
     }
 
     var witnessedRainDelay: Bool {
@@ -602,48 +625,62 @@ final class DiaryStore {
     }
 
     /// Check whether a game with this identity already exists in the diary.
+    /// Day + teams (orientation-independent), matching the canonical-key contract.
     func hasGame(day: Date, homeTeamId: String, awayTeamId: String) -> Bool {
         let cal = Calendar(identifier: .gregorian)
-        let c = cal.dateComponents([.year, .month, .day], from: day)
-        let ids = [homeTeamId, awayTeamId].sorted().joined(separator: "-")
-        let key = "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)-\(ids)"
-        return games.contains { canonicalKey($0) == key }
+        let target = cal.dateComponents([.year, .month, .day], from: day)
+        let ids = Set([homeTeamId, awayTeamId])
+        return games.contains { g in
+            let c = cal.dateComponents([.year, .month, .day], from: g.date)
+            return c.year == target.year && c.month == target.month && c.day == target.day
+                && Set([g.homeTeamId, g.awayTeamId]) == ids
+        }
     }
 
     // MARK: - Fuzzy duplicate detection
 
-    /// Scans the existing diary for entries that are suspiciously similar to
-    /// this candidate — same ballpark within a day, or matching confirmation
-    /// number. Returns the best-matching existing game, or nil.
+    /// Scans the existing diary for an entry that is genuinely the *same* game as
+    /// this candidate — the same ticket imported twice, or a manual re-entry —
+    /// and returns it, or nil.
+    ///
+    /// Crucially, this must NOT flag distinct games a fan really attended:
+    /// consecutive games of a series (same matchup on adjacent days) and games
+    /// bought on separate tickets (different confirmation numbers) are kept. The
+    /// app even awards a Back-to-Back badge for consecutive-day attendance, so
+    /// silently deleting the second ticket would corrupt the diary.
     func findNearDuplicate(for candidate: NearDuplicateCandidate) -> AttendedGame? {
         let cal = Calendar(identifier: .gregorian)
+        let candidateConf = candidate.confirmation?.trimmingCharacters(in: .whitespaces)
+        let candidateTeams = Set([candidate.homeTeamId, candidate.awayTeamId])
 
-        // Strongest signal: same confirmation number on a different game.
-        if let conf = candidate.confirmation, !conf.trimmingCharacters(in: .whitespaces).isEmpty {
-            if let match = games.first(where: { $0.confirmation == conf && $0.id != candidate.proposedId }) {
+        // Strongest signal: the exact same confirmation number on another entry
+        // — unambiguously the same purchased ticket imported twice.
+        if let conf = candidateConf, !conf.isEmpty {
+            if let match = games.first(where: {
+                $0.confirmation?.trimmingCharacters(in: .whitespaces) == conf && $0.id != candidate.proposedId
+            }) {
                 return match
             }
         }
 
-        // Same ballpark + date within ±1 day (possible date-parsing variance).
-        let candidateDay = cal.startOfDay(for: candidate.date)
+        // Same matchup at the same ballpark on the same calendar day — a
+        // re-import of the same game. We deliberately do NOT match adjacent-day
+        // games of the same matchup (that's a normal multi-game series), and two
+        // tickets that each carry a *different* confirmation number are, by
+        // definition, two separate purchases and never a duplicate.
         for game in games where game.ballparkId == candidate.ballparkId && game.id != candidate.proposedId {
-            let gameDay = cal.startOfDay(for: game.date)
-            let diff = abs(gameDay.timeIntervalSince(candidateDay))
-            if diff <= 86400 { // ±1 day
-                // Same ballpark one day apart — likely same game.
-                return game
-            }
-        }
+            guard Set([game.homeTeamId, game.awayTeamId]) == candidateTeams else { continue }
 
-        // Same matchup within ±3 days (possible series overlap).
-        let candidateTeams = Set([candidate.homeTeamId, candidate.awayTeamId])
-        for game in games where game.id != candidate.proposedId {
-            let gameTeams = Set([game.homeTeamId, game.awayTeamId])
-            guard candidateTeams == gameTeams else { continue }
-            let gameDay = cal.startOfDay(for: game.date)
-            let diff = abs(gameDay.timeIntervalSince(candidateDay))
-            if diff <= 3 * 86400 { return game }
+            let gameConf = game.confirmation?.trimmingCharacters(in: .whitespaces)
+            if let a = candidateConf, !a.isEmpty, let b = gameConf, !b.isEmpty, a != b { continue }
+
+            guard cal.isDate(game.date, inSameDayAs: candidate.date) else { continue }
+
+            // Same day + same teams: a duplicate, unless first-pitch times are
+            // far enough apart to be the two ends of a doubleheader.
+            let minutesApart = abs(game.date.timeIntervalSince(candidate.date)) / 60
+            if minutesApart >= 150 { continue }
+            return game
         }
 
         return nil
@@ -679,42 +716,69 @@ final class DiaryStore {
         save()
     }
 
-    /// Accept a flagged duplicate: delete the existing game and replace it
-    /// with the flagged candidate (the user confirms the new entry is better).
+    /// Accept a flagged duplicate: keep the existing game's real box score,
+    /// status and enrichment, and merge in the candidate ticket's seat and
+    /// confirmation details. "Use New" means the freshly-imported ticket carries
+    /// better ticket details — it must never wipe a verified game's score and
+    /// drop it back into "upcoming" with an empty shell.
     func acceptFlaggedDuplicate(_ flagged: FlaggedDuplicate) {
-        // Delete the existing game.
-        deleteGame(flagged.existingGameId)
-        // Build and add the new game.
-        let game = AttendedGame(
-            id: UUID(),
-            date: flagged.candidateDate,
-            ballparkId: flagged.candidateBallparkId,
-            homeTeamId: flagged.candidateHomeTeamId,
-            awayTeamId: flagged.candidateAwayTeamId,
-            homeScore: 0, awayScore: 0,
-            userRootedForHome: favoriteTeamId == flagged.candidateHomeTeamId ? true
-                : (favoriteTeamId == flagged.candidateAwayTeamId ? false : nil),
-            section: flagged.candidateSection,
-            row: flagged.candidateRow,
-            seat: flagged.candidateSeat,
-            confirmation: flagged.candidateConfirmation,
-            weather: .night,
-            firstPitchTempF: 0,
-            attendance: 0,
-            durationMinutes: 0,
-            highlights: [],
-            milestones: [],
-            pitching: [],
-            companions: "",
-            memory: "",
-            emailSubject: flagged.candidateSource,
-            source: flagged.candidateSource,
-            status: .upcoming,
-            isVerified: false
+        defer {
+            flaggedDuplicates.removeAll { $0.id == flagged.id }
+            save()
+        }
+
+        guard let existing = game(id: flagged.existingGameId) else { return }
+
+        // Prefer the candidate ticket's detail when it carries a real value,
+        // otherwise keep what the existing (verified) game already has.
+        func pick(_ candidate: String, _ current: String) -> String {
+            let trimmed = candidate.trimmingCharacters(in: .whitespaces)
+            return (!trimmed.isEmpty && trimmed != "—") ? candidate : current
+        }
+        let newSection = pick(flagged.candidateSection, existing.section)
+        let newRow = pick(flagged.candidateRow, existing.row)
+        let newSeat = pick(flagged.candidateSeat, existing.seat)
+        let newConfirmation = flagged.candidateConfirmation?.isEmpty == false ? flagged.candidateConfirmation : existing.confirmation
+
+        let updated = AttendedGame(
+            id: existing.id,
+            date: existing.date,
+            ballparkId: existing.ballparkId,
+            homeTeamId: existing.homeTeamId,
+            awayTeamId: existing.awayTeamId,
+            homeScore: existing.homeScore,
+            awayScore: existing.awayScore,
+            userRootedForHome: existing.userRootedForHome,
+            section: newSection,
+            row: newRow,
+            seat: newSeat,
+            confirmation: newConfirmation,
+            weather: existing.weather,
+            firstPitchTempF: existing.firstPitchTempF,
+            attendance: existing.attendance,
+            durationMinutes: existing.durationMinutes,
+            highlights: existing.highlights,
+            milestones: existing.milestones,
+            pitching: existing.pitching,
+            companions: existing.companions,
+            memory: existing.memory,
+            emailSubject: existing.emailSubject,
+            source: existing.source,
+            status: existing.status,
+            isVerified: existing.isVerified
         )
-        addManualGame(game)
-        flaggedDuplicates.removeAll { $0.id == flagged.id }
-        save()
+        replaceGame(updated)
+    }
+
+    /// Replace a stored game in place by id, preserving its owning source.
+    private func replaceGame(_ updated: AttendedGame) {
+        for (inboxId, list) in gamesByInbox {
+            guard let idx = list.firstIndex(where: { $0.id == updated.id }) else { continue }
+            var copy = list
+            copy[idx] = updated
+            gamesByInbox[inboxId] = copy
+            return
+        }
     }
 
     /// Toggle automatic duplicate deletion. When on, near-duplicates are
@@ -905,16 +969,19 @@ final class DiaryStore {
         await enrichExistingGames()
         await reVerifyUnverifiedGames()
         
-        // If there are still upcoming games, schedule an extra check
-        // a few minutes later to catch scores that post after the game.
+        // If there are still upcoming games, schedule an extra check a few
+        // minutes later to catch scores that post after the game. Cancel any
+        // previous pending re-check so repeated pulls don't stack timers.
         if !upcomingGames.isEmpty {
-            Task { @MainActor in
+            upcomingRecheckTask?.cancel()
+            upcomingRecheckTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(180))
-                await refreshUpcomingScores()
-                save()
+                guard !Task.isCancelled, let self else { return }
+                await self.refreshUpcomingScores()
+                self.save()
             }
         }
-        
+
         return imported
     }
 
@@ -1298,7 +1365,13 @@ final class DiaryStore {
 
     // MARK: - Persistence
 
+    /// Current on-disk schema version. Bump when the Snapshot shape changes in a
+    /// way a migration needs to key off. Optional on decode so pre-versioning
+    /// saves (which have no field) still load.
+    private static let currentSchemaVersion = 2
+
     private struct Snapshot: Codable {
+        var schemaVersion: Int?
         var favoriteTeamId: String
         var hasPickedFavorite: Bool
         var hasCompletedOnboarding: Bool
@@ -1311,6 +1384,7 @@ final class DiaryStore {
 
     private func save() {
         let snapshot = Snapshot(
+            schemaVersion: Self.currentSchemaVersion,
             favoriteTeamId: favoriteTeamId,
             hasPickedFavorite: hasPickedFavorite,
             hasCompletedOnboarding: hasCompletedOnboarding,
@@ -1325,13 +1399,16 @@ final class DiaryStore {
     }
 
     private func load() {
-        guard
-            let data = defaults.data(forKey: storageKey),
-            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data)
-        else {
-            // First launch or failed decode — normal for fresh installs.
-            // Data survives app updates because UserDefaults is preserved
-            // across App Store updates. The storageKey must never change.
+        guard let data = defaults.data(forKey: storageKey) else {
+            // First launch — nothing saved yet. UserDefaults is preserved across
+            // App Store updates, so the storageKey must never change.
+            return
+        }
+        guard let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else {
+            // Existing data failed to decode. Preserve the raw blob under a
+            // recovery key so a future build (or manual support) can salvage the
+            // user's diary, instead of letting the next save() overwrite it.
+            defaults.set(data, forKey: corruptBackupKey)
             return
         }
         // Migrate: ensure older saves that predate hasAcceptedTerms don't lose

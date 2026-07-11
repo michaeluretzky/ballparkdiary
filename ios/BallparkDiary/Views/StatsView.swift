@@ -13,6 +13,11 @@ struct StatsView: View {
                 Theme.nightVignette.ignoresSafeArea()
 
                 ScrollView {
+                    if store.completedGames.isEmpty {
+                        StatsEmptyView()
+                            .padding(.horizontal, 24)
+                            .padding(.top, 60)
+                    } else {
                     VStack(spacing: 18) {
                         // Hero
                         HeroSummary()
@@ -70,6 +75,7 @@ struct StatsView: View {
                         Color.clear.frame(height: 30)
                     }
                     .padding(.top, 8)
+                    }
                 }
             }
             .navigationTitle("Stats")
@@ -86,6 +92,31 @@ struct StatsView: View {
     }
 }
 
+// MARK: - Empty state
+
+/// Shown on the Stats tab before any completed game exists, so a brand-new user
+/// sees an invitation rather than a wall of zeros (and a 0–0 losing record).
+private struct StatsEmptyView: View {
+    var body: some View {
+        VStack(spacing: 18) {
+            BaseballMark(size: 84)
+                .accessibilityHidden(true)
+
+            Text("Your stats start at first pitch.")
+                .font(.scoreboard(22, weight: .black))
+                .foregroundStyle(Theme.textPrimary)
+                .multilineTextAlignment(.center)
+
+            Text("Add a game — share a ticket or enter one by hand — and your record, ballpark map, milestones and streaks fill in automatically.")
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 // MARK: - Hero
 
 private struct HeroSummary: View {
@@ -98,7 +129,7 @@ private struct HeroSummary: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Lifetime")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(tc.primary)
+                        .foregroundStyle(store.favoriteTeam.accentOnDark)
                     Text("\(store.totalGames) games")
                         .font(.scoreboard(34, weight: .black))
                         .foregroundStyle(Theme.textPrimary)
@@ -121,7 +152,7 @@ private struct HeroSummary: View {
         .nightCard()
         .overlay(alignment: .topLeading) {
             Rectangle()
-                .fill(tc.primary)
+                .fill(store.favoriteTeam.accentOnDark)
                 .frame(width: 36, height: 3)
                 .clipShape(.capsule)
                 .offset(y: -1.5)
@@ -232,6 +263,9 @@ private struct RecordCard: View {
     @Environment(DiaryStore.self) private var store
     @State private var animateBar: Bool = false
 
+    /// Games with an actual rooting interest — the basis for the record.
+    private var ratedGames: Int { store.winCount + store.lossCount }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
@@ -239,57 +273,66 @@ private struct RecordCard: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
-                Text(percentString)
-                    .font(.stat(13, weight: .heavy))
-                    .foregroundStyle(Theme.lights)
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                VStack(alignment: .leading) {
-                    Text("\(store.winCount)")
-                        .font(.scoreboard(44, weight: .black))
-                        .foregroundStyle(Theme.grass)
-                    Text("W")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.textMuted)
-                }
-                Text("–")
-                    .font(.scoreboard(28, weight: .black))
-                    .foregroundStyle(Theme.textMuted)
-                VStack(alignment: .leading) {
-                    Text("\(store.lossCount)")
-                        .font(.scoreboard(44, weight: .black))
-                        .foregroundStyle(Theme.foul)
-                    Text("L")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.textMuted)
-                }
-                Spacer()
-                VStack(alignment: .trailing) {
-                    Text("\(store.longestStreak)")
-                        .font(.scoreboard(28, weight: .black))
+                if ratedGames > 0 {
+                    Text(percentString)
+                        .font(.stat(13, weight: .heavy))
                         .foregroundStyle(Theme.lights)
-                    Text("Best streak")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Theme.textMuted)
                 }
             }
 
-            GeometryReader { geo in
-                let totalWidth = geo.size.width
-                let winRatio = store.completedGames.isEmpty ? 0 : Double(store.winCount) / Double(store.completedGames.count)
-                let winWidth = totalWidth * (animateBar ? winRatio : 0)
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.foul.opacity(0.85))
-                    Capsule()
-                        .fill(LinearGradient(colors: [Theme.grass, Theme.grass.opacity(0.85)], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: winWidth)
+            if ratedGames == 0 {
+                Text("Pick who you rooted for on a game to start your win–loss record. Games you just watched don't count for or against you.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
+                    VStack(alignment: .leading) {
+                        Text("\(store.winCount)")
+                            .font(.scoreboard(44, weight: .black))
+                            .foregroundStyle(Theme.grass)
+                        Text("W")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    Text("–")
+                        .font(.scoreboard(28, weight: .black))
+                        .foregroundStyle(Theme.textMuted)
+                    VStack(alignment: .leading) {
+                        Text("\(store.lossCount)")
+                            .font(.scoreboard(44, weight: .black))
+                            .foregroundStyle(Theme.foul)
+                        Text("L")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing) {
+                        Text("\(store.longestStreak)")
+                            .font(.scoreboard(28, weight: .black))
+                            .foregroundStyle(Theme.lights)
+                        Text("Best streak")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
                 }
-            }
-            .frame(height: 8)
-            .onAppear {
-                withAnimation(.spring(response: 0.9, dampingFraction: 0.85).delay(0.1)) {
-                    animateBar = true
+
+                GeometryReader { geo in
+                    let totalWidth = geo.size.width
+                    let winRatio = Double(store.winCount) / Double(ratedGames)
+                    let winWidth = totalWidth * (animateBar ? winRatio : 0)
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.foul.opacity(0.85))
+                        Capsule()
+                            .fill(LinearGradient(colors: [Theme.grass, Theme.grass.opacity(0.85)], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: winWidth)
+                    }
+                }
+                .frame(height: 8)
+                .onAppear {
+                    withAnimation(.spring(response: 0.9, dampingFraction: 0.85).delay(0.1)) {
+                        animateBar = true
+                    }
                 }
             }
         }
@@ -841,7 +884,10 @@ private struct TimeWatchedCard: View {
             }
 
             if store.totalMinutesWatched > 0 {
-                let avgMin = store.totalMinutesWatched / max(1, store.completedGames.count)
+                // Average only over games that actually have a known duration, so
+                // unverified entries (0 min) don't drag the average down.
+                let timedGames = store.completedGames.filter { $0.durationMinutes > 0 }.count
+                let avgMin = store.totalMinutesWatched / max(1, timedGames)
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
                         .font(.system(size: 10, weight: .semibold))
@@ -1056,7 +1102,7 @@ private struct AchievementDetailSheet: View {
         case "duel":          return g.totalRuns <= 2
         case "shutout":       return g.homeScore == 0 || g.awayScore == 0
         case "slugfest":      return g.highlights.filter { $0.kind == .homeRun }.count >= 5
-        case "sunday":        return Calendar.current.component(.weekday, from: g.date) == 1
+        case "sunday":        return DiaryStore.isSundayDayGame(g)
         case "rain":          return g.weather == .rain
         // ── Win streaks ──
         case "streak", "streak5": return g.userWon
