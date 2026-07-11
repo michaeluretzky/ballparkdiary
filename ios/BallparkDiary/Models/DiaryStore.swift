@@ -105,6 +105,9 @@ final class DiaryStore {
     init() {
         load()
         collapseDuplicates()
+        // Simulator-only: fills an empty diary with sample games so App Store
+        // screenshots show real usage. Compiled out of device builds.
+        seedDemoDiaryIfNeeded()
         autoDeleteDuplicates = defaults.bool(forKey: autoDeleteKey)
         // Publish the initial widget snapshot so a fresh install / cold launch
         // has data on the home screen without waiting for the first save.
