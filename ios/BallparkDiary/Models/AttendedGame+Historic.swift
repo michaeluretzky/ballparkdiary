@@ -28,6 +28,23 @@ extension AttendedGame {
             return "You saw \(career.playerName)'s \(career.title.lowercased())"
         }
 
+        // A Maddux — complete-game shutout on under 100 pitches. Rarer than a
+        // 4-hit game and absolutely worth the flag.
+        if let maddux = milestones.first(where: { $0.title.contains("Maddux") }) {
+            return "\(maddux.playerName) threw a Maddux — a shutout on under 100 pitches"
+        }
+
+        // Any complete-game shutout — nine innings, one arm, zero runs.
+        if let shutout = milestones.first(where: { $0.title.contains("Complete-Game Shutout") }) {
+            return "\(shutout.playerName) threw a complete-game shutout"
+        }
+
+        // Hand-curated famous games (managerial milestones, iconic nights) that
+        // box-score data alone can't detect.
+        if let curated = curatedFamousNote {
+            return curated
+        }
+
         // Walk-off finish.
         if highlights.contains(where: { $0.kind == .walkoff }) {
             return "Decided by a walk-off"
@@ -50,4 +67,41 @@ extension AttendedGame {
 
     /// Whether this game qualifies as a famous/historic game.
     var isHistoric: Bool { historicNote != nil }
+
+    // MARK: - Curated famous games
+
+    /// Famous games that can't be derived from the box score alone — managerial
+    /// milestones, iconic franchise nights. Keyed by "yyyy-MM-dd|homeTeamId"
+    /// using the league's Eastern-time calendar day.
+    private static let curatedFamousGames: [String: String] = [
+        // WSH 1 @ STL 2, Busch Stadium — Mike Matheny's 500th career win as a
+        // manager (2nd-fastest to 500 in Cardinals history, behind Southworth).
+        "2017-07-01|stl": "Mike Matheny's 500th career win as a manager — Cardinals 2, Nationals 1",
+    ]
+
+    /// Eastern-time day formatter matching how MLB schedules are keyed.
+    private static let easternDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "America/New_York")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// Curated note for this game, if its date + home team match the registry.
+    /// Checks both the Eastern-time day and the device's local day so manual
+    /// entries (saved at local noon/midnight) still match.
+    private var curatedFamousNote: String? {
+        let easternKey = "\(Self.easternDayFormatter.string(from: date))|\(homeTeamId)"
+        if let note = Self.curatedFamousGames[easternKey] { return note }
+
+        let localFormatter = DateFormatter()
+        localFormatter.calendar = Calendar.current
+        localFormatter.locale = Locale(identifier: "en_US_POSIX")
+        localFormatter.timeZone = TimeZone.current
+        localFormatter.dateFormat = "yyyy-MM-dd"
+        let localKey = "\(localFormatter.string(from: date))|\(homeTeamId)"
+        return Self.curatedFamousGames[localKey]
+    }
 }

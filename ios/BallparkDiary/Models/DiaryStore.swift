@@ -795,6 +795,7 @@ final class DiaryStore {
             attendance: mergedSeat.attendance, durationMinutes: mergedSeat.durationMinutes,
             highlights: mergedSeat.highlights, milestones: mergedSeat.milestones,
             pitching: mergedSeat.pitching,
+            batting: mergedSeat.batting,
             companions: mergedSeat.companions, memory: mergedSeat.memory,
             emailSubject: mergedSeat.emailSubject, source: mergedSeat.source,
             status: mergedSeat.status, isVerified: mergedSeat.isVerified
@@ -1315,6 +1316,7 @@ final class DiaryStore {
                             attendance: game.attendance, durationMinutes: game.durationMinutes,
                             highlights: game.highlights, milestones: game.milestones,
                             pitching: game.pitching,
+                            batting: game.batting,
                             companions: game.companions, memory: game.memory,
                             emailSubject: game.emailSubject, source: game.source,
                             status: .completed, isVerified: true

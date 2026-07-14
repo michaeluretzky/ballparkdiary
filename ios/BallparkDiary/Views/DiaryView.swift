@@ -13,6 +13,7 @@ struct DiaryView: View {
     @State private var navigationPath = NavigationPath()
     @State private var yearFilter: Int? = nil
     @State private var teamFilter: String? = nil
+    @State private var famousFilter: Bool = false
     @State private var searchText: String = ""
 
     var body: some View {
@@ -73,13 +74,15 @@ struct DiaryView: View {
                         DiaryFilterBar(
                             selectedYear: $yearFilter,
                             selectedTeam: $teamFilter,
+                            famousOnly: $famousFilter,
                             availableYears: availableYears,
-                            availableTeams: availableTeams
+                            availableTeams: availableTeams,
+                            famousCount: famousGameCount
                         )
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
 
-                        if !store.upcomingGames.isEmpty && yearFilter == nil && teamFilter == nil
+                        if !store.upcomingGames.isEmpty && yearFilter == nil && teamFilter == nil && !famousFilter
                             && searchText.trimmingCharacters(in: .whitespaces).isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack(spacing: 8) {
@@ -118,7 +121,7 @@ struct DiaryView: View {
                         }
 
                         if filteredGroupedGames.isEmpty
-                            && (yearFilter != nil || teamFilter != nil || !searchText.trimmingCharacters(in: .whitespaces).isEmpty) {
+                            && (yearFilter != nil || teamFilter != nil || famousFilter || !searchText.trimmingCharacters(in: .whitespaces).isEmpty) {
                             VStack(spacing: 16) {
                                 Spacer().frame(height: 20)
                                 Image(systemName: "magnifyingglass")
@@ -126,15 +129,18 @@ struct DiaryView: View {
                                     .foregroundStyle(Theme.textMuted)
                                     .frame(width: 64, height: 64)
                                     .background(Circle().fill(Theme.cardElevated))
-                                Text(searchText.trimmingCharacters(in: .whitespaces).isEmpty
-                                     ? "No games match these filters"
-                                     : "No games match your search")
+                                Text(famousFilter && yearFilter == nil && teamFilter == nil && searchText.trimmingCharacters(in: .whitespaces).isEmpty
+                                     ? "No famous games in your diary yet"
+                                     : (searchText.trimmingCharacters(in: .whitespaces).isEmpty
+                                        ? "No games match these filters"
+                                        : "No games match your search"))
                                     .font(.system(size: 17, weight: .bold))
                                     .foregroundStyle(Theme.textPrimary)
                                 Button {
                                     withAnimation(Theme.Motion.snappy) {
                                         yearFilter = nil
                                         teamFilter = nil
+                                        famousFilter = false
                                         searchText = ""
                                     }
                                 } label: {
@@ -300,6 +306,11 @@ struct DiaryView: View {
                 })
             }.filter { !$0.1.isEmpty }
         }
+        if famousFilter {
+            result = result.map { group in
+                (group.0, group.1.filter(\.isHistoric))
+            }.filter { !$0.1.isEmpty }
+        }
         if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
             let query = searchText.lowercased()
             result = result.map { group in
@@ -317,6 +328,11 @@ struct DiaryView: View {
             }.filter { !$0.1.isEmpty }
         }
         return result
+    }
+
+    /// Completed games that qualify as famous/historic — drives the filter chip.
+    private var famousGameCount: Int {
+        store.completedGames.filter(\.isHistoric).count
     }
 
     private var availableYears: [(year: Int, count: Int)] {
@@ -775,8 +791,10 @@ private struct LockedThrowbackBanner: View {
 private struct DiaryFilterBar: View {
     @Binding var selectedYear: Int?
     @Binding var selectedTeam: String?
+    @Binding var famousOnly: Bool
     let availableYears: [(year: Int, count: Int)]
     let availableTeams: [(team: Team, count: Int)]
+    let famousCount: Int
 
     private var yearLabel: String {
         if let y = selectedYear,
@@ -846,6 +864,35 @@ private struct DiaryFilterBar: View {
                     text: teamLabel,
                     isActive: selectedTeam != nil
                 )
+            }
+
+            if famousCount > 0 {
+                Button {
+                    withAnimation(Theme.Motion.snappy) {
+                        famousOnly.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "star.circle.fill")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(famousOnly ? "Famous (\(famousCount))" : "Famous")
+                            .font(.system(size: 13, weight: .heavy))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(famousOnly ? Theme.nightDeep : .white.opacity(0.7))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(famousOnly ? Theme.lights : Theme.cardElevated)
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(famousOnly ? Theme.lights.opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(famousOnly ? "Showing famous games only, \(famousCount) games. Tap to show all." : "Filter for famous games")
             }
 
             Spacer(minLength: 0)

@@ -738,3 +738,113 @@ struct VerifiedSavePreservesUserChoicesTests {
         #expect(!game.isEnriched, "Unverified game with 0 duration should be enrichable")
     }
 }
+
+// MARK: - Famous game detection
+
+@MainActor
+struct FamousGameDetectionTests {
+
+    private func makeGame(
+        date: Date = Date(timeIntervalSince1970: 1_660_000_000),
+        ballparkId: String = "wrigley-field",
+        homeTeamId: String = "chc",
+        awayTeamId: String = "stl",
+        milestones: [PlayerMilestone] = []
+    ) -> AttendedGame {
+        AttendedGame(
+            id: UUID(), date: date,
+            ballparkId: ballparkId, homeTeamId: homeTeamId, awayTeamId: awayTeamId,
+            homeScore: 0, awayScore: 1,
+            userRootedForHome: false,
+            section: "", row: "", seat: "", confirmation: nil,
+            weather: .clear, firstPitchTempF: 0, attendance: 0, durationMinutes: 0,
+            highlights: [], milestones: milestones, pitching: [],
+            companions: "", memory: "",
+            emailSubject: "test", source: "Manual",
+            status: .completed, isVerified: true
+        )
+    }
+
+    /// A Maddux (sub-100-pitch complete-game shutout) must flag the game famous.
+    @Test func madduxIsFamous() {
+        let maddux = PlayerMilestone(
+            id: UUID(), playerName: "Jordan Montgomery", teamId: "stl",
+            title: "Maddux \u{2014} Sub-100-Pitch Shutout", category: .milestone,
+            stat: "9.0 IP, 1 H, 0 R, 7 K on 99 pitches",
+            detail: "Went the distance.", context: "A Maddux.", inning: nil
+        )
+        let game = makeGame(milestones: [maddux])
+        #expect(game.isHistoric, "A Maddux should be a famous game")
+        #expect(game.historicNote?.contains("Maddux") == true)
+    }
+
+    /// A complete-game shutout (over 100 pitches) is famous too.
+    @Test func completeGameShutoutIsFamous() {
+        let shutout = PlayerMilestone(
+            id: UUID(), playerName: "Ace Pitcher", teamId: "stl",
+            title: "Complete-Game Shutout", category: .milestone,
+            stat: "9.0 IP, 4 H, 0 R, 8 K on 112 pitches",
+            detail: "Went the distance.", context: "Rare.", inning: nil
+        )
+        let game = makeGame(milestones: [shutout])
+        #expect(game.isHistoric)
+        #expect(game.historicNote?.contains("shutout") == true)
+    }
+
+    /// Mike Matheny's 500th managerial win (WSH @ STL, July 1 2017) comes from
+    /// the curated registry — box score data alone can't detect it.
+    @Test func mathenyFiveHundredthWinIsFamous() {
+        // 2017-07-01T23:15:00Z — 7:15pm ET first pitch at Busch Stadium.
+        let firstPitch = Date(timeIntervalSince1970: 1_498_950_900)
+        let game = makeGame(
+            date: firstPitch,
+            ballparkId: "busch-stadium", homeTeamId: "stl", awayTeamId: "wsh"
+        )
+        #expect(game.isHistoric, "Matheny's 500th win should be curated famous")
+        #expect(game.historicNote?.contains("Matheny") == true)
+    }
+
+    /// The curated note must not fire for the same matchup on a different day.
+    @Test func curatedNoteRequiresExactDate() {
+        let otherDay = Date(timeIntervalSince1970: 1_499_037_300) // July 2, 2017
+        let game = makeGame(
+            date: otherDay,
+            ballparkId: "busch-stadium", homeTeamId: "stl", awayTeamId: "wsh"
+        )
+        #expect(game.historicNote?.contains("Matheny") != true)
+    }
+
+    /// Older saves without the batting field decode with an empty box score.
+    @Test func battingDefaultsToEmptyForLegacyGames() throws {
+        let legacy = makeGame()
+        #expect(legacy.batting == nil, "Default init should leave batting nil")
+        #expect(legacy.battingLines.isEmpty)
+
+        // Round-trip: a game with batting keeps it through Codable.
+        let line = BattingLine(
+            name: "Paul Goldschmidt", playerMlbId: 502671, teamMlbId: 138,
+            battingOrder: 300, position: "1B",
+            atBats: 4, runs: 1, hits: 2, doubles: 1, triples: 0, homeRuns: 0,
+            rbi: 1, walks: 0, strikeOuts: 1, stolenBases: 0
+        )
+        let enriched = AttendedGame(
+            id: UUID(), date: .now,
+            ballparkId: "busch-stadium", homeTeamId: "stl", awayTeamId: "wsh",
+            homeScore: 2, awayScore: 1,
+            userRootedForHome: true,
+            section: "", row: "", seat: "", confirmation: nil,
+            weather: .clear, firstPitchTempF: 0, attendance: 0, durationMinutes: 0,
+            highlights: [], milestones: [], pitching: [],
+            batting: [line],
+            companions: "", memory: "",
+            emailSubject: "test", source: "Manual",
+            status: .completed, isVerified: true
+        )
+        let data = try JSONEncoder().encode(enriched)
+        let decoded = try JSONDecoder().decode(AttendedGame.self, from: data)
+        #expect(decoded.battingLines.count == 1)
+        #expect(decoded.battingLines.first?.name == "Paul Goldschmidt")
+        #expect(decoded.battingLines.first?.lineupSlot == 3)
+        #expect(decoded.battingLines.first?.isSubstitute == false)
+    }
+}

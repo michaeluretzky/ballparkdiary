@@ -44,6 +44,7 @@ nonisolated struct GameDetails: Sendable, Hashable {
     let scoringPlays: [ScoringPlay]
     let homeRuns: [HomeRunPlay]
     let pitching: [PitchingLine]
+    let batting: [BattingLine]
 }
 
 nonisolated struct ScoringPlay: Sendable, Hashable {
@@ -64,6 +65,31 @@ nonisolated struct HomeRunPlay: Sendable, Hashable {
     let seasonHomeRunNumber: Int?      // the "(14)" in the play description
     let careerHomeRunTotal: Int?       // exact career total through this homer
     let description: String
+}
+
+/// A batter's line from a finished game's box score (AB R H RBI BB K).
+nonisolated struct BattingLine: Sendable, Hashable, Codable {
+    let name: String
+    let playerMlbId: Int
+    let teamMlbId: Int
+    /// MLB batting-order code: "100" = leadoff starter, "401" = first sub in the 4 hole.
+    let battingOrder: Int
+    let position: String
+    let atBats: Int
+    let runs: Int
+    let hits: Int
+    let doubles: Int
+    let triples: Int
+    let homeRuns: Int
+    let rbi: Int
+    let walks: Int
+    let strikeOuts: Int
+    let stolenBases: Int
+
+    /// Lineup slot 1–9 derived from the order code.
+    var lineupSlot: Int { battingOrder / 100 }
+    /// Entered mid-game (pinch hitter, pinch runner, defensive sub).
+    var isSubstitute: Bool { battingOrder % 100 != 0 }
 }
 
 nonisolated struct PitchingLine: Sendable, Hashable, Codable {
@@ -267,8 +293,34 @@ nonisolated final class MLBStatsService: Sendable {
         }
 
         var pitching: [PitchingLine] = []
+        var batting: [BattingLine] = []
         let winnerId = feed.liveData.decisions?.winner?.id
         for (side, teamMlbId) in [(feed.liveData.boxscore.teams.away, awayId), (feed.liveData.boxscore.teams.home, homeId)] {
+            for bid in side.batters ?? [] {
+                guard
+                    let player = side.players["ID\(bid)"],
+                    let stat = player.stats?.batting,
+                    let orderString = player.battingOrder,
+                    let order = Int(orderString)
+                else { continue }
+                batting.append(BattingLine(
+                    name: player.person?.fullName ?? "",
+                    playerMlbId: bid,
+                    teamMlbId: teamMlbId,
+                    battingOrder: order,
+                    position: player.position?.abbreviation ?? "",
+                    atBats: stat.atBats ?? 0,
+                    runs: stat.runs ?? 0,
+                    hits: stat.hits ?? 0,
+                    doubles: stat.doubles ?? 0,
+                    triples: stat.triples ?? 0,
+                    homeRuns: stat.homeRuns ?? 0,
+                    rbi: stat.rbi ?? 0,
+                    walks: stat.baseOnBalls ?? 0,
+                    strikeOuts: stat.strikeOuts ?? 0,
+                    stolenBases: stat.stolenBases ?? 0
+                ))
+            }
             for pid in side.pitchers {
                 guard let player = side.players["ID\(pid)"], let stat = player.stats?.pitching else { continue }
                 pitching.append(PitchingLine(
@@ -318,6 +370,11 @@ nonisolated final class MLBStatsService: Sendable {
             )
         }
 
+        // Lineup order within each team: slot 1–9, subs after the starter they replaced.
+        batting.sort {
+            $0.teamMlbId != $1.teamMlbId ? $0.teamMlbId < $1.teamMlbId : $0.battingOrder < $1.battingOrder
+        }
+
         return GameDetails(
             attendance: info?.attendance ?? 0,
             durationMinutes: info?.gameDurationMinutes ?? 0,
@@ -325,7 +382,8 @@ nonisolated final class MLBStatsService: Sendable {
             weatherCondition: weather?.condition ?? "",
             dayNight: feed.gameData.datetime?.dayNight ?? "night",
             homeMlbId: homeId, awayMlbId: awayId,
-            scoringPlays: scoringPlays, homeRuns: homeRuns, pitching: pitching
+            scoringPlays: scoringPlays, homeRuns: homeRuns, pitching: pitching,
+            batting: batting
         )
     }
 
@@ -478,13 +536,32 @@ nonisolated final class MLBStatsService: Sendable {
     private struct BoxscoreTeams: Decodable { let home: BoxscoreSide; let away: BoxscoreSide }
     private struct BoxscoreSide: Decodable {
         let pitchers: [Int]
+        let batters: [Int]?
         let players: [String: BoxscorePlayer]
     }
     private struct BoxscorePlayer: Decodable {
         let person: PersonRef?
         let stats: PlayerStats?
+        let battingOrder: String?
+        let position: PositionRef?
     }
-    private struct PlayerStats: Decodable { let pitching: PitchingStat? }
+    private struct PositionRef: Decodable { let abbreviation: String? }
+    private struct PlayerStats: Decodable {
+        let pitching: PitchingStat?
+        let batting: BattingStat?
+    }
+    private struct BattingStat: Decodable {
+        let atBats: Int?
+        let runs: Int?
+        let hits: Int?
+        let doubles: Int?
+        let triples: Int?
+        let homeRuns: Int?
+        let rbi: Int?
+        let baseOnBalls: Int?
+        let strikeOuts: Int?
+        let stolenBases: Int?
+    }
     private struct PitchingStat: Decodable {
         let inningsPitched: String?
         let hits: Int?

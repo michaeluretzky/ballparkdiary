@@ -88,6 +88,11 @@ struct GameDetailView: View {
                     FactsPanel(game: liveGame)
                         .padding(.horizontal, 16)
 
+                    if !liveGame.battingLines.isEmpty {
+                        BattingPanel(game: liveGame)
+                            .padding(.horizontal, 16)
+                    }
+
                     if !liveGame.pitching.isEmpty {
                         PitchingPanel(game: liveGame)
                             .padding(.horizontal, 16)
@@ -905,6 +910,153 @@ private struct Fact: View {
         .background(
             RoundedRectangle(cornerRadius: 10).fill(Theme.cardElevated)
         )
+    }
+}
+
+// MARK: - Batting
+
+private struct BattingPanel: View {
+    let game: AttendedGame
+
+    private var awayBatters: [BattingLine] {
+        game.battingLines.filter { $0.teamMlbId == game.awayTeam.mlbId }
+    }
+    private var homeBatters: [BattingLine] {
+        game.battingLines.filter { $0.teamMlbId == game.homeTeam.mlbId }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Batting")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
+
+            if !awayBatters.isEmpty {
+                PitchingTeamHeader(team: game.awayTeam, label: "Away")
+                BattingStatHeader()
+                ForEach(awayBatters, id: \.playerMlbId) { line in
+                    BattingRow(line: line, team: game.awayTeam)
+                }
+            }
+
+            if !homeBatters.isEmpty {
+                PitchingTeamHeader(team: game.homeTeam, label: "Home")
+                BattingStatHeader()
+                ForEach(homeBatters, id: \.playerMlbId) { line in
+                    BattingRow(line: line, team: game.homeTeam)
+                }
+            }
+        }
+        .padding(16)
+        .nightCard()
+    }
+}
+
+/// Column labels shown once above each team's batting rows.
+private struct BattingStatHeader: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: 28, height: 1)
+            Spacer().frame(width: 8)
+            Text("BATTER")
+                .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                .tracking(1)
+                .foregroundStyle(Theme.textMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer().frame(width: 6)
+            ForEach(["AB", "R", "H", "RBI", "BB", "K"], id: \.self) { label in
+                Text(label)
+                    .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(Theme.textMuted)
+                    .frame(width: 26)
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+}
+
+private struct BattingRow: View {
+    let line: BattingLine
+    let team: Team
+
+    /// Slot badge for starters (1–9); substitutes show an arrow marker.
+    private var slotLabel: String {
+        line.isSubstitute ? "\u{2191}" : "\(line.lineupSlot)"
+    }
+
+    /// Extra-base summary appended under the name (2B, 3B, HR, SB).
+    private var extras: String {
+        var parts: [String] = []
+        if line.homeRuns > 0 { parts.append(line.homeRuns > 1 ? "\(line.homeRuns) HR" : "HR") }
+        if line.doubles > 0 { parts.append(line.doubles > 1 ? "\(line.doubles) 2B" : "2B") }
+        if line.triples > 0 { parts.append(line.triples > 1 ? "\(line.triples) 3B" : "3B") }
+        if line.stolenBases > 0 { parts.append(line.stolenBases > 1 ? "\(line.stolenBases) SB" : "SB") }
+        return parts.joined(separator: " \u{00B7} ")
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(slotLabel)
+                .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                .foregroundStyle(line.isSubstitute ? Theme.textMuted : team.primary)
+                .frame(width: 28, height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(line.isSubstitute ? Theme.cardElevated : team.primary.opacity(0.15))
+                )
+
+            Spacer().frame(width: 8)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Text(line.name)
+                        .font(.system(size: 12, weight: line.isSubstitute ? .medium : .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    if !line.position.isEmpty {
+                        Text(line.position)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                }
+                if !extras.isEmpty {
+                    Text(extras)
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(Theme.lights)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer().frame(width: 6)
+
+            BattingStatCell(value: "\(line.atBats)")
+            BattingStatCell(value: "\(line.runs)", emphasized: line.runs > 0)
+            BattingStatCell(value: "\(line.hits)", emphasized: line.hits > 0)
+            BattingStatCell(value: "\(line.rbi)", emphasized: line.rbi > 0)
+            BattingStatCell(value: "\(line.walks)")
+            BattingStatCell(value: "\(line.strikeOuts)")
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Theme.cardElevated.opacity(0.5))
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(line.name), \(line.hits) for \(line.atBats), \(line.runs) runs, \(line.rbi) RBI")
+    }
+}
+
+private struct BattingStatCell: View {
+    let value: String
+    var emphasized: Bool = false
+
+    var body: some View {
+        Text(value)
+            .font(.stat(11, weight: emphasized ? .heavy : .bold))
+            .foregroundStyle(emphasized ? Theme.textPrimary : Theme.textSecondary)
+            .frame(width: 26)
     }
 }
 

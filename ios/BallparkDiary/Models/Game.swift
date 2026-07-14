@@ -25,6 +25,9 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     let highlights: [Highlight]
     let milestones: [PlayerMilestone]
     let pitching: [PitchingLine]
+    /// Full batter box score, merged from the MLB live feed. Optional for
+    /// backward-compatible decoding of diaries saved before this field existed.
+    let batting: [BattingLine]?
     /// Who the user went to the game with (e.g. "Dad", "Sarah and Mike").
     let companions: String
     /// Free-form notes about the day — memories, moments, anything worth keeping.
@@ -38,6 +41,50 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     /// Whether this game was confirmed against the real MLB box score.
     /// nil for backward-compatible decoding of older saves (treated as verified).
     let isVerified: Bool?
+
+    /// Memberwise initializer with `batting` defaulted so existing call sites
+    /// and older construction paths keep working unchanged.
+    init(
+        id: UUID, date: Date, ballparkId: String,
+        homeTeamId: String, awayTeamId: String,
+        homeScore: Int, awayScore: Int,
+        userRootedForHome: Bool?,
+        section: String, row: String, seat: String, confirmation: String?,
+        weather: Weather, firstPitchTempF: Int,
+        attendance: Int, durationMinutes: Int,
+        highlights: [Highlight], milestones: [PlayerMilestone], pitching: [PitchingLine],
+        batting: [BattingLine]? = nil,
+        companions: String, memory: String,
+        emailSubject: String, source: String, status: Status?,
+        isVerified: Bool?
+    ) {
+        self.id = id
+        self.date = date
+        self.ballparkId = ballparkId
+        self.homeTeamId = homeTeamId
+        self.awayTeamId = awayTeamId
+        self.homeScore = homeScore
+        self.awayScore = awayScore
+        self.userRootedForHome = userRootedForHome
+        self.section = section
+        self.row = row
+        self.seat = seat
+        self.confirmation = confirmation
+        self.weather = weather
+        self.firstPitchTempF = firstPitchTempF
+        self.attendance = attendance
+        self.durationMinutes = durationMinutes
+        self.highlights = highlights
+        self.milestones = milestones
+        self.pitching = pitching
+        self.batting = batting
+        self.companions = companions
+        self.memory = memory
+        self.emailSubject = emailSubject
+        self.source = source
+        self.status = status
+        self.isVerified = isVerified
+    }
 
     /// Resolved status, defaulting older saved games to `.completed`.
     var gameStatus: Status { status ?? .completed }
@@ -62,6 +109,8 @@ struct AttendedGame: Identifiable, Hashable, Codable {
         return rootedForHome ? homeTeam : awayTeam
     }
     var scoreString: String { isUpcoming ? "vs" : "\(awayScore) – \(homeScore)" }
+    /// Batter box score lines, empty for older saves that predate the field.
+    var battingLines: [BattingLine] { batting ?? [] }
 
     /// Confirmation number to surface, if the ticket carried one.
     var confirmationNumber: String? {
@@ -94,6 +143,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
             highlights: highlights, milestones: milestones, pitching: pitching,
+            batting: batting,
             companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: status,
             isVerified: isVerified
@@ -111,6 +161,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
             highlights: highlights, milestones: milestones, pitching: pitching,
+            batting: batting,
             companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: status,
             isVerified: isVerified
@@ -129,6 +180,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
             highlights: highlights, milestones: milestones, pitching: pitching,
+            batting: batting,
             companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: status,
             isVerified: isVerified
@@ -146,6 +198,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             weather: weather, firstPitchTempF: firstPitchTempF,
             attendance: attendance, durationMinutes: durationMinutes,
             highlights: highlights, milestones: milestones, pitching: pitching,
+            batting: batting,
             companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: .completed,
             isVerified: true
@@ -174,6 +227,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             highlights: AttendedGame.highlights(from: details),
             milestones: AttendedGame.milestones(from: details),
             pitching: details.pitching,
+            batting: details.batting.isEmpty ? batting : details.batting,
             companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: .completed,
             isVerified: true

@@ -704,8 +704,14 @@ private struct BallparkWrappedCard: View {
     /// Called with a paywall context when a free user taps a Pro action.
     let onUnlock: (PaywallContext) -> Void
     @State private var shareItem: ShareableImage? = nil
+    @State private var showAllSeasons: Bool = false
 
     private var recaps: [DiaryStore.SeasonRecap] { store.seasonRecaps }
+
+    /// Every season with data is available; collapsed view shows the 3 most recent.
+    private var visibleRecaps: [DiaryStore.SeasonRecap] {
+        showAllSeasons ? recaps : Array(recaps.prefix(3))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -717,6 +723,11 @@ private struct BallparkWrappedCard: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
+                if !recaps.isEmpty {
+                    Text("\(recaps.count) season\(recaps.count == 1 ? "" : "s")")
+                        .font(.stat(11, weight: .heavy))
+                        .foregroundStyle(Theme.textMuted)
+                }
             }
 
             if recaps.isEmpty {
@@ -724,7 +735,7 @@ private struct BallparkWrappedCard: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.textMuted)
             } else {
-                ForEach(recaps.prefix(3)) { recap in
+                ForEach(visibleRecaps) { recap in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("\(String(recap.year)) Season")
@@ -796,6 +807,33 @@ private struct BallparkWrappedCard: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Theme.cardElevated)
                     )
+                }
+
+                if recaps.count > 3 {
+                    Button {
+                        withAnimation(Theme.Motion.snappy) {
+                            showAllSeasons.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: showAllSeasons ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(showAllSeasons
+                                 ? "Show recent seasons"
+                                 : "Show all \(recaps.count) seasons")
+                                .font(.system(size: 12, weight: .semibold))
+                            Spacer()
+                        }
+                        .foregroundStyle(Theme.clay)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Theme.clay.opacity(0.08))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showAllSeasons ? "Collapse to recent seasons" : "Show all \(recaps.count) seasons of Ballpark Wrapped")
                 }
             }
         }
