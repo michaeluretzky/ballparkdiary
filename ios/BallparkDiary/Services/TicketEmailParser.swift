@@ -146,19 +146,35 @@ nonisolated enum TicketEmailParser {
             guard !trimmed.isEmpty else { continue }
 
             // Try explicit keywords first
-            if let val = seatFieldValue(in: trimmed, keywords: ["Section", "Sec", "Sect"]) {
+            if let val = seatFieldValue(in: trimmed, keywords: ["Section", "Sec", "Sect"]), isPlausibleSeatValue(val) {
                 if section.isEmpty { section = val }
-            } else if let val = seatFieldValue(in: trimmed, keywords: ["Row"]) {
+            } else if let val = seatFieldValue(in: trimmed, keywords: ["Row"]), isPlausibleSeatValue(val) {
                 if row.isEmpty { row = val }
-            } else if let val = seatFieldValue(in: trimmed, keywords: ["Seat", "Seats"]) {
+            } else if let val = seatFieldValue(in: trimmed, keywords: ["Seat", "Seats"]), isPlausibleSeatValue(val) {
                 // "Seats 11-12" → take the first seat number
                 if seat.isEmpty { seat = val.components(separatedBy: CharacterSet(charactersIn: "-–/,")).first?.trimmingCharacters(in: .whitespaces) ?? val }
             }
         }
 
+        // --- Stacked-layout pass ---
+        // Some tickets put the caption and the value on separate lines
+        // ("SECTION\n160" or, SeatGeek-style, "BOX537\nSECTION"). When a line
+        // is EXACTLY a caption word, look at the adjacent lines for the value —
+        // caption-above-value first (the common email/PDF form), then
+        // value-above-caption.
+        if section.isEmpty || row.isEmpty || seat.isEmpty {
+            let stacked = stackedSeatValues(in: lines)
+            if section.isEmpty, let v = stacked.section { section = v }
+            if row.isEmpty, let v = stacked.row { row = v }
+            if seat.isEmpty, let v = stacked.seat {
+                seat = v.components(separatedBy: CharacterSet(charactersIn: "-–/,")).first?.trimmingCharacters(in: .whitespaces) ?? v
+            }
+        }
+
         // --- Regex fallback for single-line tickets ---
         if section.isEmpty {
-            section = firstMatch(#"\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)"#) ?? ""
+            let candidate = firstMatch(#"\b(?:Section|Sec|Sect)\s*[:-]?\s*(\S+)"#) ?? ""
+            if isPlausibleSeatValue(candidate) { section = candidate }
         }
         // Area labels without "Section": FIELD BOX 42, GRANDSTAND 5, etc.
         if section.isEmpty {
@@ -167,11 +183,12 @@ nonisolated enum TicketEmailParser {
         }
 
         if row.isEmpty {
-            row = firstMatch(#"\bRow\s*[:-]?\s*(\S+)"#) ?? ""
+            let candidate = firstMatch(#"\bRow\s*[:-]?\s*(\S+)"#) ?? ""
+            if isPlausibleSeatValue(candidate) { row = candidate }
         }
         if seat.isEmpty {
             let raw = firstMatch(#"\bSeats?\s*[:-]?\s*(\S+)"#) ?? ""
-            if !raw.isEmpty {
+            if isPlausibleSeatValue(raw) {
                 seat = raw.components(separatedBy: CharacterSet(charactersIn: "-–/,")).first?.trimmingCharacters(in: .whitespaces) ?? raw
             }
         }
@@ -187,6 +204,81 @@ nonisolated enum TicketEmailParser {
         let confirmation = validatedConfirmation(from: text)
 
         return SeatInfo(section: section, row: row, seat: seat, confirmation: confirmation)
+    }
+
+    /// Caption words and common ticket-screen noise that can never be a
+    /// section/row/seat value. Guards against OCR reading-order artifacts like
+    /// "ROW Rate Field" → row "Rate".
+    private static let seatValueRejects: Set<String> = [
+        "section", "sec", "sect", "row", "seat", "seats", "qty", "quantity",
+        "info", "ticket", "tickets", "rate", "field", "gate", "entry", "aisle",
+        "level", "admission", "admit", "details", "order", "event", "general",
+        "standing", "none", "tbd", "n/a"
+    ]
+
+    /// A plausible section/row/seat value: a short alphanumeric token
+    /// ("BOX537", "160", "7", "AA", "11-12") — never a caption or an English
+    /// word. Letter-only tokens are allowed up to 3 characters (rows like "A",
+    /// "AA", sections like "GA").
+    private static func isPlausibleSeatValue(_ value: String) -> Bool {
+        let token = value.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        guard !token.isEmpty, token.count <= 10, !token.contains(" ") else { return false }
+        guard !seatValueRejects.contains(token.lowercased()) else { return false }
+        let allowed = token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "/" }
+        guard allowed else { return false }
+        if token.contains(where: { $0.isNumber }) { return true }
+        return token.count <= 3
+    }
+
+    /// Resolve stacked caption/value layouts where the caption word sits alone
+    /// on its own line. Two real-world orientations exist:
+    ///   • caption-above-value — Ticketmaster/email style ("SECTION\n160\nROW\n7")
+    ///   • value-above-caption — SeatGeek order screen ("BOX537\nSECTION\n2\nROW")
+    /// The orientation is decided once per ticket by scoring how many captions
+    /// (including QTY, which is never mapped to a field) find a plausible value
+    /// in each direction — the direction that satisfies more captions wins.
+    private static func stackedSeatValues(in rawLines: [String]) -> (section: String?, row: String?, seat: String?) {
+        let lines = rawLines
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        let allCaptions: Set<String> = ["section", "sec", "sect", "row", "seat", "seats", "qty", "quantity"]
+
+        func captionToken(_ line: String) -> String? {
+            let token = line.trimmingCharacters(in: .punctuationCharacters).lowercased()
+            return allCaptions.contains(token) ? token : nil
+        }
+
+        let captionIndices = lines.indices.filter { captionToken(lines[$0]) != nil }
+        guard !captionIndices.isEmpty else { return (nil, nil, nil) }
+
+        func plausibleNeighbor(_ index: Int) -> String? {
+            guard lines.indices.contains(index), captionToken(lines[index]) == nil else { return nil }
+            let candidate = lines[index].trimmingCharacters(in: .punctuationCharacters)
+            return isPlausibleSeatValue(candidate) ? candidate : nil
+        }
+
+        let scoreBelow = captionIndices.compactMap { plausibleNeighbor($0 + 1) }.count
+        let scoreAbove = captionIndices.compactMap { plausibleNeighbor($0 - 1) }.count
+        let preferAbove = scoreAbove > scoreBelow
+
+        func value(forCaptions captions: Set<String>) -> String? {
+            for index in captionIndices {
+                guard let token = captionToken(lines[index]), captions.contains(token) else { continue }
+                if preferAbove {
+                    if let v = plausibleNeighbor(index - 1) ?? plausibleNeighbor(index + 1) { return v }
+                } else {
+                    if let v = plausibleNeighbor(index + 1) ?? plausibleNeighbor(index - 1) { return v }
+                }
+            }
+            return nil
+        }
+
+        return (
+            section: value(forCaptions: ["section", "sec", "sect"]),
+            row: value(forCaptions: ["row"]),
+            seat: value(forCaptions: ["seat", "seats"])
+        )
     }
 
     /// Extract the value following a seat-location keyword on a single line.

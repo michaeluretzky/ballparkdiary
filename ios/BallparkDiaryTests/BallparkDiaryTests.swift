@@ -96,6 +96,94 @@ struct TicketDetectionTests {
         )]
         #expect(TicketEmailParser.detect(in: messages).isEmpty)
     }
+
+    /// SeatGeek's order screen stacks the VALUE above the caption ("BOX537"
+    /// above "SECTION", "2" above "ROW", "1" above "QTY"). The parser must
+    /// resolve that orientation — section BOX537, row 2, and never treat the
+    /// QTY column or venue name as seat data.
+    @Test func seatGeekValueAboveCaptionLayout() throws {
+        let snippet = """
+        Chicago White Sox vs. New York Yankees
+        Thursday Jul 30, 1:10pm • Rate Field
+        TICKET INFO
+        BOX537
+        SECTION
+        2
+        ROW
+        1
+        QTY
+        Rate Field 333 West 35th Street, Chicago
+        """
+        let messages = [EmailMessage(
+            id: "1", subject: "", from: "seatgeek.com", snippet: snippet, internalDate: .now
+        )]
+        let game = try #require(TicketEmailParser.detect(in: messages).first)
+
+        #expect(game.teamMlbId == 145)       // White Sox mentioned first
+        #expect(game.opponentMlbId == 147)   // Yankees
+        #expect(game.section == "BOX537")
+        #expect(game.row == "2")
+        #expect(game.seat.isEmpty)           // qty is not a seat
+        #expect(game.dateHints.contains { $0.month == 7 && $0.day == 30 })
+    }
+
+    /// Ticketmaster-style stacked text keeps the caption ABOVE the value — the
+    /// orientation scoring must not flip it.
+    @Test func captionAboveValueLayoutStillParses() throws {
+        let snippet = """
+        Yankees vs Red Sox — Aug 22, 2022
+        SECTION
+        160
+        ROW
+        7
+        SEAT
+        3
+        """
+        let messages = [EmailMessage(
+            id: "1", subject: "", from: "ticketmaster.com", snippet: snippet, internalDate: .now
+        )]
+        let game = try #require(TicketEmailParser.detect(in: messages).first)
+
+        #expect(game.section == "160")
+        #expect(game.row == "7")
+        #expect(game.seat == "3")
+    }
+
+    /// OCR reading-order artifacts like "ROW Rate Field" must never produce a
+    /// word as a row — an empty value beats a wrong one.
+    @Test func englishWordsAreRejectedAsSeatValues() throws {
+        let messages = [EmailMessage(
+            id: "1",
+            subject: "White Sox vs Yankees",
+            from: "seatgeek.com",
+            snippet: "Jul 30, 2026 SECTION ROW QTY Rate Field Chicago",
+            internalDate: .now
+        )]
+        let game = try #require(TicketEmailParser.detect(in: messages).first)
+
+        #expect(game.section.isEmpty)
+        #expect(game.row.isEmpty)
+        #expect(game.seat.isEmpty)
+    }
+
+    /// Canonical lines synthesized by the share extension's geometric pairing
+    /// ("Section: BOX537") always win over looser matches later in the text.
+    @Test func synthesizedSeatLinesTakePriority() throws {
+        let snippet = """
+        Section: BOX537
+        Row: 2
+        White Sox vs Yankees Jul 30, 2026
+        BOX537   2   1
+        SECTION   ROW   QTY
+        """
+        let messages = [EmailMessage(
+            id: "1", subject: "", from: "seatgeek.com", snippet: snippet, internalDate: .now
+        )]
+        let game = try #require(TicketEmailParser.detect(in: messages).first)
+
+        #expect(game.section == "BOX537")
+        #expect(game.row == "2")
+    }
 }
 
 // MARK: - Milestone & weather derivation

@@ -102,13 +102,23 @@ nonisolated enum TicketContentExtractor {
 
     // MARK: - OCR
 
+    /// A single recognized text fragment with its normalized position on screen
+    /// (Vision coordinates: origin bottom-left, values 0–1).
+    private struct OCRFragment {
+        let text: String
+        let box: CGRect
+    }
+
     private static func recognizeText(in image: UIImage) async -> String? {
         guard let cgImage = image.cgImage else { return nil }
-        return await withCheckedContinuation { continuation in
+        let fragments: [OCRFragment] = await withCheckedContinuation { continuation in
             let request = VNRecognizeTextRequest { request, _ in
                 let observations = request.results as? [VNRecognizedTextObservation] ?? []
-                let lines = observations.compactMap { $0.topCandidates(1).first?.string }
-                continuation.resume(returning: lines.isEmpty ? nil : lines.joined(separator: " "))
+                let frags: [OCRFragment] = observations.compactMap { obs in
+                    guard let candidate = obs.topCandidates(1).first, !candidate.string.isEmpty else { return nil }
+                    return OCRFragment(text: candidate.string, box: obs.boundingBox)
+                }
+                continuation.resume(returning: frags)
             }
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
@@ -116,9 +126,99 @@ nonisolated enum TicketContentExtractor {
             do {
                 try handler.perform([request])
             } catch {
-                continuation.resume(returning: nil)
+                continuation.resume(returning: [])
             }
         }
+        guard !fragments.isEmpty else { return nil }
+        return assembleText(from: fragments)
+    }
+
+    /// Rebuild reading order from OCR fragments and preserve line structure.
+    /// Fragments are grouped into visual rows (top→bottom, left→right) so the
+    /// downstream parser can scan line-by-line. Additionally, stacked
+    /// value/label seat layouts (e.g. SeatGeek's order screen where "BOX537"
+    /// sits ABOVE the small "SECTION" caption) are detected geometrically and
+    /// emitted as canonical "Section:" / "Row:" / "Seat:" lines at the top of
+    /// the text — those win over any looser keyword match downstream.
+    private static func assembleText(from fragments: [OCRFragment]) -> String {
+        // Group into visual rows. Vision's Y axis points up, so higher midY = higher on screen.
+        let sorted = fragments.sorted { $0.box.midY > $1.box.midY }
+        var rows: [[OCRFragment]] = []
+        for frag in sorted {
+            if let lastRow = rows.last, let anchor = lastRow.first,
+               abs(anchor.box.midY - frag.box.midY) < max(anchor.box.height, frag.box.height) * 0.6 {
+                rows[rows.count - 1].append(frag)
+            } else {
+                rows.append([frag])
+            }
+        }
+        var lines: [String] = rows.map { row in
+            row.sorted { $0.box.minX < $1.box.minX }.map(\.text).joined(separator: "   ")
+        }
+
+        let seatLines = stackedSeatLines(from: fragments)
+        if !seatLines.isEmpty {
+            lines.insert(contentsOf: seatLines, at: 0)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Detect column-style seat blocks where the value and its caption are
+    /// separate OCR fragments stacked vertically (value above OR below the
+    /// label). Returns canonical lines like "Section: BOX537".
+    private static func stackedSeatLines(from fragments: [OCRFragment]) -> [String] {
+        struct LabelSpec {
+            let names: Set<String>
+            let canonical: String
+        }
+        let specs: [LabelSpec] = [
+            LabelSpec(names: ["SECTION", "SEC", "SECT"], canonical: "Section"),
+            LabelSpec(names: ["ROW"], canonical: "Row"),
+            LabelSpec(names: ["SEAT", "SEATS"], canonical: "Seat"),
+        ]
+        // Any caption word — a fragment matching these can never be a value.
+        let labelWords: Set<String> = [
+            "SECTION", "SEC", "SECT", "ROW", "SEAT", "SEATS", "QTY", "QUANTITY",
+            "GATE", "ENTRY", "AISLE", "LEVEL", "TICKET", "INFO"
+        ]
+
+        func normalized(_ text: String) -> String {
+            text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)).uppercased()
+        }
+
+        /// A short alphanumeric token that plausibly names a section/row/seat
+        /// ("BOX537", "160", "7", "AA", "11-12") — never a caption or a word.
+        func isPlausibleValue(_ text: String) -> Bool {
+            let token = normalized(text)
+            guard !token.isEmpty, token.count <= 10, !token.contains(" ") else { return false }
+            guard !labelWords.contains(token) else { return false }
+            let allowed = token.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "/" }
+            guard allowed else { return false }
+            if token.contains(where: { $0.isNumber }) { return true }
+            return token.count <= 3 // letter rows/sections like "A", "AA", "GA"
+        }
+
+        var result: [String] = []
+        for spec in specs {
+            guard let label = fragments.first(where: { spec.names.contains(normalized($0.text)) }) else { continue }
+
+            var best: (fragment: OCRFragment, distance: CGFloat)?
+            for candidate in fragments {
+                // Must overlap horizontally with the caption's column.
+                guard candidate.box.minX < label.box.maxX, candidate.box.maxX > label.box.minX else { continue }
+                let distance = abs(candidate.box.midY - label.box.midY)
+                // Different visual row, but vertically adjacent.
+                guard distance > label.box.height * 0.5, distance < label.box.height * 4 else { continue }
+                guard isPlausibleValue(candidate.text) else { continue }
+                if best == nil || distance < best!.distance {
+                    best = (candidate, distance)
+                }
+            }
+            if let best {
+                result.append("\(spec.canonical): \(normalized(best.fragment.text))")
+            }
+        }
+        return result
     }
 
     // MARK: - PDF
@@ -150,7 +250,7 @@ nonisolated enum TicketContentExtractor {
                 ocr.append(contentsOf: observations.compactMap { $0.topCandidates(1).first?.string })
             }
         }
-        return ocr.isEmpty ? nil : ocr.joined(separator: " ")
+        return ocr.isEmpty ? nil : ocr.joined(separator: "\n")
     }
 
     // MARK: - Source hint

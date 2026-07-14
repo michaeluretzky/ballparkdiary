@@ -24,33 +24,45 @@ class ShareViewController: UIViewController {
 
     /// Launches the containing app via its custom URL scheme.
     ///
-    /// `NSExtensionContext.open(_:)` is documented to work only for Today
-    /// extensions and silently fails for Share Extensions — which is why the
-    /// "Open Diary" button appeared to do nothing. The reliable approach is to
-    /// walk the responder chain until we reach the shared `UIApplication` and
-    /// invoke `openURL:` on it via selector (the symbol is unavailable to
-    /// extensions at compile time, so we call it dynamically).
+    /// On iOS 18 the classic `openURL:` selector hack is hard-blocked by UIKit
+    /// ("Force returning false"), so taps appeared to do nothing — especially
+    /// when sharing from Photos. The approach that works on iOS 18 is to walk
+    /// the responder chain, cast to `UIApplication`, and call the modern
+    /// `open(_:options:completionHandler:)` API on it.
     private func openHostApp() {
         guard let url = URL(string: "ballparkdiary://import") else {
             extensionContext?.completeRequest(returningItems: nil)
             return
         }
 
-        let selector = sel_registerName("openURL:")
-        var responder: UIResponder? = self
         var didOpen = false
+        var responder: UIResponder? = self
         while let current = responder {
-            if current !== self, current.responds(to: selector) {
-                current.perform(selector, with: url)
+            if let application = current as? UIApplication {
+                application.open(url, options: [:], completionHandler: nil)
                 didOpen = true
                 break
             }
             responder = current.next
         }
 
+        // Legacy fallback for systems where the cast never matched.
+        if !didOpen {
+            let selector = sel_registerName("openURL:")
+            responder = self
+            while let current = responder {
+                if current !== self, current.responds(to: selector) {
+                    current.perform(selector, with: url)
+                    didOpen = true
+                    break
+                }
+                responder = current.next
+            }
+        }
+
         // Give the system a beat to switch to the host app before we tear the
         // extension down. If we never found a responder, dismiss right away.
-        let delay: TimeInterval = didOpen ? 0.5 : 0
+        let delay: TimeInterval = didOpen ? 0.8 : 0
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             self?.extensionContext?.completeRequest(returningItems: nil)
         }
