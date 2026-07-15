@@ -14,6 +14,14 @@ struct TeamLogoView: View {
 
     private var lineWidth: CGFloat { max(1.5, size * 0.035) }
     private var innerPadding: CGFloat { size * 0.18 }
+    /// The blurred outer glow overflows the layout frame, which makes small
+    /// badges look different sizes per team color — only show it on larger art.
+    private var showsGlow: Bool { size >= 40 }
+    /// Light backing kept strictly inside the border ring so its blur never
+    /// bleeds past the circle edge at chip sizes.
+    private var backingDiameter: CGFloat {
+        min(size - innerPadding * 2 + 6, size - lineWidth * 2 - 4)
+    }
 
     /// The fill used for the team-colored circle — always the team's primary.
     private var fillColor: Color { team.primary }
@@ -21,11 +29,14 @@ struct TeamLogoView: View {
 
     var body: some View {
         ZStack {
-            // Outer glow — uses the adaptive glow so dark teams get a visible halo
-            Circle()
-                .fill(glowColor)
-                .frame(width: size + 10, height: size + 10)
-                .blur(radius: 8)
+            // Outer glow — uses the adaptive glow so dark teams get a visible halo.
+            // Skipped at chip sizes where the overflow distorts apparent size.
+            if showsGlow {
+                Circle()
+                    .fill(glowColor)
+                    .frame(width: size + 10, height: size + 10)
+                    .blur(radius: 8)
+            }
 
             // Team-color fill with subtle gradient
             Circle()
@@ -48,11 +59,8 @@ struct TeamLogoView: View {
             // primary-colored circles (e.g. Yankees navy "NY" on navy circle).
             Circle()
                 .fill(Color.white.opacity(0.18))
-                .frame(
-                    width: size - innerPadding * 2 + 6,
-                    height: size - innerPadding * 2 + 6
-                )
-                .blur(radius: 4)
+                .frame(width: backingDiameter, height: backingDiameter)
+                .blur(radius: size >= 40 ? 4 : 3)
                 .allowsHitTesting(false)
 
             // Official team logo from MLB raster CDN via AsyncImage, or

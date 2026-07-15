@@ -1249,14 +1249,15 @@ final class DiaryStore {
         if didChange { save() }
     }
 
-    /// Backfill verified facts, highlights and milestones for finished games that
-    /// were imported before enrichment existed (or whose detail fetch failed).
+    /// Backfill verified facts, highlights, milestones and batter box scores for
+    /// finished games that were imported before enrichment existed, whose detail
+    /// fetch failed, or that were enriched before batting lines were captured.
     /// Runs on pull-to-refresh so older diary entries gain real box-score data.
     private func enrichExistingGames(_ hadNetworkError: inout Bool) async {
         var didChange = false
         for (inboxId, list) in gamesByInbox {
             var updated = list
-            for (index, game) in list.enumerated() where !game.isUpcoming && !game.isEnriched {
+            for (index, game) in list.enumerated() where game.needsDetailBackfill {
                 let teamMlbId = game.homeTeam.mlbId
                 let opponentMlbId = game.awayTeam.mlbId
                 guard teamMlbId > 0 else { continue }

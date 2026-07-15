@@ -132,6 +132,11 @@ struct AttendedGame: Identifiable, Hashable, Codable {
     /// whether a pull-to-refresh should re-fetch a game's details.
     var isEnriched: Bool { durationMinutes > 0 || !highlights.isEmpty || !milestones.isEmpty }
 
+    /// True when a finished game still needs a detail fetch — either it was
+    /// never enriched, or it was enriched before batter box scores existed
+    /// (`batting == nil` on legacy saves) and needs a one-time backfill.
+    var needsDetailBackfill: Bool { !isUpcoming && (!isEnriched || batting == nil) }
+
     /// Return a copy with updated seat information.
     func withSeat(section: String, row: String, seat: String) -> AttendedGame {
         AttendedGame(
@@ -227,7 +232,7 @@ struct AttendedGame: Identifiable, Hashable, Codable {
             highlights: AttendedGame.highlights(from: details),
             milestones: AttendedGame.milestones(from: details),
             pitching: details.pitching,
-            batting: details.batting.isEmpty ? batting : details.batting,
+            batting: details.batting.isEmpty ? (batting ?? []) : details.batting,
             companions: companions, memory: memory,
             emailSubject: emailSubject, source: source, status: .completed,
             isVerified: true

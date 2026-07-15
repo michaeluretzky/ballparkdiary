@@ -167,7 +167,7 @@ struct DiaryView: View {
                                         .frame(width: 32, height: 3)
                                         .clipShape(.capsule)
                                     Text(group.0)
-                                        .font(.system(size: 16, weight: .black))
+                                        .font(.scoreboard(18, weight: .heavy))
                                         .foregroundStyle(.white)
                                 }
                                 .padding(.horizontal, 20)
@@ -227,12 +227,8 @@ struct DiaryView: View {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(store.favoriteTeam.accentOnDark)
-                            .frame(width: 32, height: 32)
-                            .background(
-                                Circle()
-                                    .fill(store.favoriteTeam.accentOnDark.opacity(0.15))
-                            )
                     }
+                    .accessibilityLabel("Add a game")
                 }
             }
             .refreshable {
@@ -467,18 +463,18 @@ struct GameCard: View {
                 HStack(spacing: 8) {
                     if game.isUpcoming {
                         Image(systemName: "clock")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(game.homeTeam.accentOnDark)
                         Text(game.date.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)).minute()))
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.stat(12, weight: .heavy))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                     } else {
                         Image(systemName: game.userWon ? "trophy.fill" : "circle.dotted")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(game.userRootedForHome == nil ? Theme.textMuted : (game.userWon ? Theme.grass : Theme.foul))
                         Text(game.scoreString)
-                            .font(.system(size: 12, weight: .heavy, design: .default).monospacedDigit())
+                            .font(.stat(12, weight: .heavy))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                     }
@@ -567,16 +563,16 @@ struct GameCard: View {
     // MARK: Date badge
 
     private var dateBadge: some View {
-        HStack(spacing: 8) {
-            Text(game.date.formatted(.dateTime.month(.abbreviated)))
-                .font(.caps(11, weight: .heavy))
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(game.date.formatted(.dateTime.month(.abbreviated)).uppercased())
+                .font(.caps(12, weight: .heavy))
                 .tracking(1)
                 .foregroundStyle(.white)
             Text(game.date.formatted(.dateTime.day()))
-                .font(.stat(20, weight: .heavy))
+                .font(.display(20, weight: .heavy))
                 .foregroundStyle(.white)
             Text(String(Calendar.current.component(.year, from: game.date)))
-                .font(.stat(11, weight: .semibold))
+                .font(.caps(12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.6))
         }
     }
@@ -605,8 +601,8 @@ private struct TeamChip: View {
         HStack(spacing: 7) {
             TeamLogoView(team: team, size: 30, showGloss: false)
             Text(team.fullName)
-                .font(.stat(11, weight: .heavy))
-                .foregroundStyle(primary ? .white : .white.opacity(0.65))
+                .font(.system(size: 12, weight: primary ? .bold : .semibold))
+                .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
